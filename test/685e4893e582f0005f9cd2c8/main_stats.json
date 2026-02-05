@@ -1,0 +1,11 @@
+{
+  "agent_role": "main",
+  "execution_success": true,
+  "llm_calls": 0,
+  "tool_calls": {
+    "expert_entertainment_charts_want_to_watch_list_rank_order": 1
+  },
+  "total_tool_calls": 1,
+  "execution_time": 831.64,
+  "total_tokens": 0
+}

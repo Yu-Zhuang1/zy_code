@@ -1,0 +1,26 @@
+[
+  {
+    "rank":7,
+    "title_id":"1523850",
+    "title_name":"星河入梦",
+    "want_total":79589,
+    "want_month_new":33798,
+    "rank_proximity_score":0.75
+  },
+  {
+    "rank":8,
+    "title_id":"1443455",
+    "title_name":"喜欢上“欠欠”的你",
+    "want_total":33822,
+    "want_month_new":24739,
+    "rank_proximity_score":1.0
+  },
+  {
+    "rank":9,
+    "title_id":"338436",
+    "title_name":"爱乐之城",
+    "want_total":212665,
+    "want_month_new":21983,
+    "rank_proximity_score":0.75
+  }
+]

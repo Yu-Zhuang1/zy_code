@@ -1,0 +1,15 @@
+{
+  "agent_role": "factor",
+  "execution_success": true,
+  "llm_calls": 18,
+  "tool_calls": {
+    "fetch_ranking_data": 2,
+    "browser_navigate": 1,
+    "browser_snapshot": 3,
+    "read_webpage": 1,
+    "execute_python_code": 10
+  },
+  "total_tool_calls": 17,
+  "execution_time": 182.98,
+  "total_tokens": 189231
+}

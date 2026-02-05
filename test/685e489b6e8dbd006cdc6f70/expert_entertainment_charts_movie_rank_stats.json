@@ -1,0 +1,21 @@
+{
+  "agent_role": "expert",
+  "execution_success": true,
+  "llm_calls": 2,
+  "tool_calls": {
+    "factor_common_chart_definition_stability_guard_guard": 1,
+    "factor_entertainment_chart_state_snapshot_anchor": 1,
+    "factor_entertainment_chart_momentum_short_horizon_update": 1,
+    "factor_entertainment_ticketing_demand_proxy_update": 1
+  },
+  "total_tool_calls": 4,
+  "execution_time": 275.39,
+  "total_tokens": 14745,
+  "factor_tools_used": [
+    "factor_common_chart_definition_stability_guard_guard",
+    "factor_entertainment_chart_state_snapshot_anchor",
+    "factor_entertainment_chart_momentum_short_horizon_update",
+    "factor_entertainment_ticketing_demand_proxy_update"
+  ],
+  "factor_tools_count": 4
+}

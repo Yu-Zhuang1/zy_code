@@ -1,0 +1,27 @@
+{
+  "agent_role": "expert",
+  "execution_success": true,
+  "llm_calls": 3,
+  "tool_calls": {
+    "factor_common_chart_definition_guard_guard": 1,
+    "factor_entertainment_chart_snapshot_position_anchor": 1,
+    "factor_entertainment_rank_momentum_update": 1,
+    "factor_entertainment_release_timing_and_competition_update": 1,
+    "factor_entertainment_cross_platform_attention_update": 1,
+    "factor_entertainment_franchise_and_cast_pull_anchor": 1,
+    "factor_entertainment_consensus_tracker_calibration_calibrate": 1
+  },
+  "total_tool_calls": 7,
+  "execution_time": 829.19,
+  "total_tokens": 35123,
+  "factor_tools_used": [
+    "factor_common_chart_definition_guard_guard",
+    "factor_entertainment_chart_snapshot_position_anchor",
+    "factor_entertainment_rank_momentum_update",
+    "factor_entertainment_release_timing_and_competition_update",
+    "factor_entertainment_cross_platform_attention_update",
+    "factor_entertainment_franchise_and_cast_pull_anchor",
+    "factor_entertainment_consensus_tracker_calibration_calibrate"
+  ],
+  "factor_tools_count": 7
+}

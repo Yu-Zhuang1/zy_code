@@ -1,0 +1,230 @@
+<!DOCTYPE html><html data-reactroot=""><head><title>猫眼专业版-实时票房</title><meta name="csrf" content="9adcc72e447b58902356aee535b89f1af17f2d9e"/><meta name="deviceId" content="0224bd6f-a913-4be3-aa41-f63ceb9185a1"/><meta name="referrer" content="default"/><link rel="dns-prefetch" href="//ms0.meituan.net"/><link rel="dns-prefetch" href="//obj.pipi.cn"/><link rel="dns-prefetch" href="//s0.meituan.net"/><link rel="dns-prefetch" href="//p0.meituan.net"/><link rel="dns-prefetch" href="//p1.meituan.net"/><meta name="lx:category" content="moviepro"/><meta name="lx:appnm" content="moviepro_i"/><meta name="lx:cid" content="c_moviepro_8d6btpn7"/><link rel="dns-prefetch" href="//lx1.meituan.net"/><link rel="dns-prefetch" href="//lx2.meituan.net"/><link rel="dns-prefetch" href="//plx.meituan.com"/><meta charSet="utf-8"/><meta name="keywords" content="猫眼票房分析,猫眼电影,电影票房,实时票房,日票房,预售票房,影片票房趋势,受众画像,实时排片,预售排片,上座率,历史票房"/><meta name="description" content="猫眼票房分析，提供准确的每日电影实时票房、排片、上座率查询，为电影从业者提供及时、专业的数据分析服务"/><meta http-equiv="cleartype" content="yes"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><meta http-equiv="Cache-Control" content="no-cache"/><meta http-equiv="Pragma" content="no-cache"/><meta http-equiv="cache-control" content="no-store"/><meta name="format-detection" content="telephone=no"/><meta name="renderer" content="webkit"/><link rel="icon" type="image/x-icon" href="//obj.pipi.cn/festatic/piaofang/moviepro/favicon.ico"/><meta name="mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-capable" content="yes"/><meta name="apple-mobile-web-app-status-bar-style" content="black"/><meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/><meta name="theme-color" content="#F1303D"/><script>"use strict";!function(u,d){var t="owl",e="_Owl_",n="Owl",r="start",c="error",p="on"+c,f=u[p],h="addEventListener",l="attachEvent",v="isReady",b="dataSet";u[t]=u[t]||function(){try{u[t].q=u[t].q||[];var e=[].slice.call(arguments);e[0]===r?u[n]&&u[n][r]?u[n][r](e[1]):u[t].q.unshift(e):u[t].q.push(e)}catch(e){}},u[e]=u[e]||{preTasks:[],pageData:[],use:function(e,t){this[v]?u[n][e](t):this.preTasks.push({api:e,data:[t]})},run:function(t){if(!(t=this).runned){t.runned=!0,t[b]=[],u[p]=function(){t[v]||t[b].push({type:"jsError",data:arguments}),f&&f.apply(u,arguments)},u[h]&&u[h]("unhandledrejection",function(e){t[v]||t[b].push({type:"jsError",data:[e]})});var e=function(e){!t[v]&&e&&t[b].push({type:"resError",data:[e]})};u[h]?u[h](c,e,!0):u[l]&&u[l](p,e);var n="MutationObserver",r=u[n]||u["WebKit"+n]||u["Moz"+n],a=u.performance||u.WebKitPerformance,s="disableMutaObserver";if(r&&a&&a.now)try{var i=-1,o=u.navigator.userAgent;-1<o.indexOf("compatible")&&-1<o.indexOf("MSIE")?(new RegExp("MSIE (\d+\.\d+);").test(o),i=parseFloat(RegExp.$1)):-1<o.indexOf("Trident")&&-1<o.indexOf("rv:11.0")&&(i=11),-1!==i&&i<=11?t[s]=!0:(t.observer=new r(function(e){t.pageData.push({mutations:e,startTime:a.now()})})).observe(d,{childList:!0,subtree:!0})}catch(e){}else t[s]=!0}}},u[e].runned||u[e].run()}(window,document);</script><link rel="stylesheet" href="https://s0.pipi.cn/festatic/moviepro/css/largeScreenDashboardIndex_dfff8825.css"/><script>(function() {
+        var timer = null;
+        function scale() {
+          var html = document.documentElement;
+          var r = html.clientWidth/1920;
+          html.style.fontSize = Math.ceil(r*100) + 'px';
+          html.classList.add('responsive');
+          var s = html.clientWidth/html.clientHeight;
+          if (s < 1.5) {
+            html.classList.add('narrow');
+          } else {
+            html.classList.remove('narrow');
+          }
+          timer = null;
+        }
+        window.onresize = function() {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(scale, 100);
+        }
+        scale();
+      })();</script><script>window._KNB_IGNORE_WECHAT=true</script></head><body><div id="app"></div><script>window._KNB_IGNORE_WECHAT=true; window.useKNB=true;</script><script src="//s0.meituan.net/bs/knb/v1.7.1/knb.js"></script><script crossorigin="anonymous" src="//www.dpfile.com/app/owl/static/owl_1.10.1.js"></script><script>window.owl(
+              'start',
+              {
+                 
+                 project: 'com.sankuai.movie.fe.ipro',
+                 webVersion: '',
+                 ajax: {
+                   invalid: false,
+                   autoBusinessCode: true,
+                 },
+                 autoCatch: {
+                   console: true,
+                 },
+                 resourceReg: /(.51ping|.dianping|.dpfile|.meituan|.sankuai|.kuxun|.maoyan|.neixin|.mobike|.dper.com|.pipi.cn)/,
+                 resource: {
+                   enableStatusCheck: true,
+                 },
+                 error: {
+                   formatUnhandledRejection: true,
+                   combo: true,
+                 },
+                 enableLogTrace: true,
+            });</script><script src="//s0.pipi.cn/mediaplus/basic_tools_js/0.0.67_tool.js"></script><script type="text/javascript">
+          window.MyH5Guard && MyH5Guard.start({ 
+            reportToRaptor: true,
+            xhrHook: true,
+            fetchHook: true,
+          });
+          </script><script src="https://s0.pipi.cn/mediaplus/basic_tools_js/WuKong_1.0.2.min.js"></script><script type="text/javascript">
+          WuKong && WuKong.start({
+            env: "prod"
+          });
+          </script><script src="//lx.meituan.net/lx.js" type="text/javascript" charSet="utf-8" async="" defer=""></script><script type="text/javascript">!(function (win, doc, ns) {
+        var cacheFunName = '_MeiTuanALogObject';
+        win[cacheFunName] = ns;
+        if (!win[ns]) {
+          var _LX = function () {
+            _LX.q.push(arguments);
+            return _LX;
+          };
+          _LX.q = _LX.q || [];
+          _LX.l = +new Date();
+          win[ns] = _LX;
+        }
+      })(window, document, 'LXAnalytics');</script><script crossorigin="true" src="https://obj.pipi.cn/festatic/moviepro/react.production.min.js"></script><script crossorigin="true" src="https://obj.pipi.cn/festatic/moviepro/react-dom.production.min.js"></script><script src="https://s0.pipi.cn/festatic/moviepro/js/largeScreenDashboardIndex_70996ba4.js"></script><script>
+        ;(function(){
+          var props = {"data":{"ua":{"isPro":false,"isAnd":false,"isIos":false,"isHarmony":false,"os":"unknown","isAndPro":false,"isIosPro":false,"isHarmonyPro":false,"isWeChat":false,"isMiniprogram":false,"isMobile":false,"isMaoYan":false,"isTuanApp":false,"isSamSung":false,"isDianping":false,"isQQ":false,"isBaiduSmart":false,"isToutiao":false,"isDouyin":false,"isWeibo":false,"isGewara":false,"isUC":false,"isQQBrowser":false,"isSamsung":false,"isHuawei":false,"isOppo":false,"isXiaomi":false,"isVivo":false,"isZhongzhi":false,"appnm":"moviepro_i"},"uuid":"8459fdff-c249-41ea-8350-94fb37c1fd72","channelId":40009,"currentSelectType":1,"serverTimestamp":new Date("2026-02-04T14:20:45.854Z"),"inFullscreen":undefined,"calendar":{"today":"2026-02-04","selectMinDate":"2025-02-04","selectMaxDate":"2026-04-05","defaultSelect":"2026-02-04","serverTimestamp":new Date("2026-02-04T14:20:45.854Z"),"selectDate":"2026-02-04"},"$query":{},"pageId":"c_moviepro_8d6btpn7"},"title":"猫眼专业版-实时票房","autoLayout":true,"pageId":"c_moviepro_8d6btpn7","isPro":false,"isIos":false,"isAnd":false,"isHarmony":false,"os":"unknown"};
+          var App = window['largeScreenDashboardIndex'].default;
+          var app = document.getElementById('app');
+          var React = window.React;
+          var ReactDOM = window.ReactDOM;
+          var node = React.createElement(App, props);
+          ReactDOM.hydrate(node, app);
+        })();
+      </script><script type="text/javascript">
+          function parseUrl() {
+            var params = {}
+            var query = location.search && location.search.replace("?", '');
+            var queryArr = query && query.split("&") || [];
+            for (var i = 0; i < queryArr.length; i++) {
+              var curParma = queryArr[i].split("=");
+              params[curParma[0]] = curParma[1];
+            }
+            return params;
+          }
+          function setValue(obj, path, value) {
+            obj = obj || {};
+            var a = path.split('.');
+            var o = obj;
+            for (var i = 0; i < a.length - 1; i++) {
+              var n = a[i];
+              if (n in o) {
+                o = o[n];
+              } else {
+                o[n] = {};
+                o = o[n];
+              }
+            }
+            o[a[a.length - 1]] = value;
+          };
+
+          // 初始化灵犀sdk
+          function lxSDK() {
+            LXAnalytics('config','alwaysSendReferrer', true);
+
+            // 设置应用上报通道名称与uid
+            var uid = undefined;
+            if (uid) {
+              LXAnalytics('set', 'uid', uid);
+            }
+            var os = window.navigator.userAgent.match(/Macintosh|iPod|iPhone|iPad|Android|Windows Phone|Windows/i);
+            os = (os && os[0]) || 'other';
+            LXAnalytics('set', 'os', os);
+
+            var pathParmas = parseUrl();
+
+            // 发送点击上报
+            window.sendClickLog = function(event, bid, lab) {
+              if (!bid) {
+                var e = event || window.event;
+                var target = e.target || e.srcElement;
+                bid = getAttrNode(target, 'data-bid');
+                lab = getAttrNodeObj(target, 'data-lab');
+              }
+              if (bid) {
+                LXAnalytics('event', {
+                  nm : 'mge',
+                  val_bid: bid,
+                  val_lab: lab,
+                  val_cid: "c_moviepro_8d6btpn7",
+                  event_type: 'click'
+                });
+              }
+            };
+            addHandler(window, 'click', function(event) {
+              sendClickLog(event);
+            });
+
+            // 上报展示
+            window.sendView = function () {
+              Array.prototype.filter.call(document.getElementsByTagName('*'), function(el) {
+                return !!el.getAttribute('data-view-bid') && !el.getAttribute('data-view-sended');
+              }).filter(function(el) {
+                var rect = el.getBoundingClientRect();
+                return (
+                  !(rect.width === 0 && rect.height === 0) && rect.top >= 0 && rect.left >= 0 &&
+                  rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                  rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+                );
+              }).forEach(function(el) {
+                el.setAttribute('data-view-sended', 1);
+                var bid = el.getAttribute('data-view-bid');
+                var lab = valFrom(el.getAttribute('data-view-lab') || getAttrNodeObj(el, 'data-lab'));
+                LXAnalytics('event', {
+                  nm : 'mge',
+                  val_bid: bid,
+                  val_lab: lab,
+                  val_cid: "c_moviepro_8d6btpn7",
+                  event_type: 'view'
+                });
+              });
+            };
+            addHandler(window, 'scroll', debounce(window.sendView, 200));
+            // 单独为需要横向滚动的view上报绑定scroll事件
+            var viewScrollXContainers = document.getElementsByClassName('view-scroll-x-container');
+            for (var i = 0; i < viewScrollXContainers.length; i++) {
+              addHandler(viewScrollXContainers[i], 'scroll', debounce(window.sendView, 200));
+            }
+            setTimeout(window.sendView, 300);
+
+            // 实现向父元素的遍历有特定属性名的属性值
+            function getAttrNode(node, attrName) {
+              var attrValue = node.getAttribute(attrName);
+              while (!attrValue && node !== document.body && !!node.parentNode && node.parentNode !== document) {
+                node = node.parentNode;
+                attrValue = node.getAttribute(attrName);
+              }
+              return attrValue || null;
+            }
+            // 实现向父元素的遍历有特定属性名的属性值对象
+            function getAttrNodeObj(node, attrName) {
+              var attrObj = {};
+              var attrValue = node.getAttribute(attrName);
+              while (node !== document.body && !!node.parentNode && node.parentNode !== document) {
+                if (attrValue) {
+                  var obj = valFrom(attrValue);
+                  Object.keys(obj).forEach(function(key) {
+                    attrObj[key] = obj[key];
+                  });
+                }
+                node = node.parentNode;
+                attrValue = node.getAttribute(attrName);
+              }
+              return attrObj;
+            }
+            function valFrom(v) {
+              if (typeof v === 'string' && v[0] === '{') {
+                v = new Function('return (' + v + ')')(); // string to object
+              }
+              return v || {};
+            }
+            function debounce(func, wait) {
+              var timeout;
+              return function() {
+                var context = this;
+                var args = arguments;
+                var later = function() {
+                  timeout = null;
+                  func.apply(context, args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+              };
+            }
+            function addHandler(element, type, handler) {
+              if (element.addEventListener) { // DOM2级事件处理
+                element.addEventListener(type, handler, false);
+              } else if (element.attachEvent) { // IE事件处理
+                element.attachEvent('on'+ type, handler);
+              } else { // DOM0级事件处理
+                element['on'+type] = handler;
+              }
+            }
+          }
+
+          // 默认加载灵犀自动检测逻辑
+          if ("c_moviepro_8d6btpn7") {
+            lxSDK();
+          }
+        </script></body></html>
