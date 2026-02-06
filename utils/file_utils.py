@@ -41,7 +41,8 @@ def save_string_to_md(content: str, file_path: str) -> None:
         file_path (str): The output file path.
     """
     # Ensure the directory exists
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    if os.path.dirname(file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -58,3 +59,19 @@ def read_md_to_string(file_path: str) -> str:
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         return f.read()
+
+def save_json(data: Union[Dict, List], file_path: str, indent: int = 4) -> None:
+    """
+    Saves a dictionary or list to a JSON file.
+    
+    Args:
+        data (Union[Dict, List]): The data to save.
+        file_path (str): The output file path.
+        indent (int, optional): The indentation level. Defaults to 4.
+    """
+    # Ensure the directory exists
+    if os.path.dirname(file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=indent, ensure_ascii=False)

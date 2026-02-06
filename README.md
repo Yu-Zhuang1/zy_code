@@ -20,3 +20,21 @@ tc：同时处理任务数量的并发数，默认为5，如果遇到并发量�
 分析报告自动保存到任务日志文件夹下面新建的analysis文件夹下，保存为.md文件。
 
 如果想要调整指示LLM分析的重点，可以在galaxy_assistant\expert_analysis.py中的galaxy_task_analysis_prompt；以及galaxy_assistant\factor_analysis.py中的factor_analysis_prompt函数中编辑提示词。
+
+
+####MiroFlow分析：
+运行命令：
+python miroflow_assistant/miroflow_main.py test --parallel --concurrency 10 --model "openai/gpt5.2"
+python miroflow_assistant/miroflow_main.py test\long_text_8D33B3FB-6CB4-4133-BA1F-98B8242BC7BB.json --model "openai/gpt-5.2"
+
+--parallel：是否批量，若省略，则传入的路径应当是单独的json日志文件路径；若不省略，则传入的路径应当是文件夹路径，文件夹下应包含需要分析的日志文件。生成的分析报告将保存在日志相同目录下。
+
+--concurrency：批量模式并发数，默认为5
+
+--model：模型名称，默认为"openai/gpt-5.2"
+
+支持超长日志（4万+行），消息记录截断长度参数可在miroflow_assistant\log_process.py中自行调整，分为普通和激进模式。
+
+生成的分析报告将保存在日志相同目录下。
+
+如果希望调整报告的分析内容，可在miroflow_assistant\log_analysis.py的analysis_prompt函数中自行调整提示词。
