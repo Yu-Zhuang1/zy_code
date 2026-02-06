@@ -3,6 +3,7 @@ import os
 import sys
 import asyncio
 from pathlib import Path
+import re
 
 # Add project root to sys.path if not present
 project_root = Path(__file__).resolve().parent.parent
@@ -17,13 +18,14 @@ if TYPE_CHECKING:
     from llm_client import LLMClient
 
 
-def analysis_prompt(log:dict):
+def analysis_prompt(log:dict, answer:str = None):
     sys_prompt = '''
     你是一个智能体日志分析师，负责分析智能体的运行日志，并输出分析结果。
     你将得到一个智能体系统的日志。
     请你分析智能体运行情况，包括：
     智能体最终决策的逻辑是什么，依据了什么关键证据，指标，这些关键证据的来源是哪里？
     智能体整体执行流程的质量如何？
+    如果用户提供了任务的正确答案，确认智能体预测是否正确。如果不正确，分析原因。
     智能体是否发生了以下的问题或错误：
     1.幻觉问题：纯文本幻觉 (模型生成了与现实世界知识冲突的、虚构的文本陈述) 或工具相关幻觉(智能体虚构了工具的输出，或者声称自己拥有某些实际不存在的工具能力);
     2.信息处理问题：检索质量差(检索到的信息由于内容过载或不相关，导致冗余)或工具输出误解(模型错误地理解了工具返回的数据);
@@ -39,14 +41,19 @@ def analysis_prompt(log:dict):
     user_prompt = f"""
     以下是你需要分析的智能体系统日志：
     {log}
-    现在，请你给出你的分析报告，需要为纯md格式：
     """
+    if answer:
+        user_prompt += f"""
+    该任务的正确答案是：
+    {answer}
+    """
+    user_prompt += "现在，请你给出你的分析报告，需要为纯md格式："
     return [
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": user_prompt}
     ]
 
-async def analyze_log_file(file_path, client):
+async def analyze_log_file(file_path, client, answer=None, answers_map=None):
     """
     Analyzes a log file using an LLM and saves the report as a Markdown file.
     
@@ -58,10 +65,33 @@ async def analyze_log_file(file_path, client):
     print(f"Loading log from {file_path}")
     log_data = process_log_data(file_path)
     
+    if answers_map:
+        task_id = log_data.get('task_id')
+        if task_id:
+            # Extract digits from the beginning or until non-digit
+            match = re.match(r'^[^0-9]*(\d+)', str(task_id))
+            # The user requirement was: "take the part from the beginning to the end or before the first non-digit character"
+            # Actually interpretation: "task_id字段中从开头到结尾或者第一个非数字字符之前的部分"
+            # This usually means taking the prefix digits.
+            # Example: "123_abc" -> "123"
+            # Example: "123" -> "123"
+            
+            # Let's implement strictly: "from start ... to first non-digit"
+            extracted_id = ""
+            for char in str(task_id):
+                if char.isdigit():
+                    extracted_id += char
+                else:
+                    break
+            
+            if extracted_id and extracted_id in answers_map:
+                answer = answers_map[extracted_id]
+                # print(f"Matched answer for task_id {task_id} (extracted: {extracted_id})")
+    
     
     # Generate the prompt
     loop = asyncio.get_running_loop()
-    messages = await loop.run_in_executor(None, analysis_prompt, log_data)
+    messages = await loop.run_in_executor(None, analysis_prompt, log_data, answer)
     
     # Get analysis from LLM
     response = await client.chat_structured(messages, response_format=MarkdownResponse)
