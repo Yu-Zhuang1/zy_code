@@ -55,6 +55,11 @@ def parse_args():
         default=5,
         help="Concurrency for analyzing multiple tasks in batch mode (default: 5)"
     )
+    parser.add_argument(
+        "-s", "--if_shiyudev",
+        action="store_true",
+        help="alternative prompt templates for shiyu_dev"
+    )
     
     return parser.parse_args()
 
@@ -64,7 +69,8 @@ async def run_batch_analysis(
     folder_path: str,
     answers: dict,
     factor_concurrency: int,
-    task_concurrency: int
+    task_concurrency: int,
+    use_alternative_prompt: bool = False
 ):
     """
     Run analysis on all subfolders in the given folder path.
@@ -75,6 +81,7 @@ async def run_batch_analysis(
         answers: Dictionary mapping task id to ground_truth.
         factor_concurrency: Concurrency limit for factor analysis.
         task_concurrency: Concurrency limit for batch task analysis.
+        use_alternative_prompt: Whether to use alternative prompt templates.
     """
     folder = Path(folder_path)
     subfolders = [f for f in folder.iterdir() if f.is_dir()]
@@ -97,7 +104,8 @@ async def run_batch_analysis(
                 client,
                 str(task_folder),
                 answer=answer,
-                concurrency_limit=factor_concurrency
+                concurrency_limit=factor_concurrency,
+                use_alternative_prompt=use_alternative_prompt
             )
             print(f"Completed analysis for task: {task_id}")
     
@@ -127,7 +135,8 @@ async def main():
                 args.folder,
                 answers,
                 args.factor_concurrency,
-                args.task_concurrency
+                args.task_concurrency,
+                use_alternative_prompt=args.if_shiyudev
             )
         else:
             # Single mode: analyze the specified folder
@@ -139,7 +148,8 @@ async def main():
                 client,
                 args.folder,
                 answer=answer,
-                concurrency_limit=args.factor_concurrency
+                concurrency_limit=args.factor_concurrency,
+                use_alternative_prompt=args.if_shiyudev
             )
             print("Single task analysis complete.")
 

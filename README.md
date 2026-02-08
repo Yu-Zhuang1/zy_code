@@ -40,3 +40,11 @@ python miroflow_assistant/miroflow_main.py test\long_text_8D33B3FB-6CB4-4133-BA1
 生成的分析报告将保存在日志相同目录下。
 
 如果希望调整报告的分析内容，可在miroflow_assistant\log_analysis.py的analysis_prompt函数中自行调整提示词。
+
+
+
+####shiyu框架分析：
+首先调用shiyu_dev_assistant\document_process.py shiyulog，对形如shiyulog\shiyu log日志文件夹下的日志文件进行整理，以匹配galaxy的查找方式。该代码会将参数目录（如shiyulog）下的所有文件夹（如可能有的与shiyu_log平级的所有文件夹）下的原本的日志文件格式与结构进行整理，将原本的形如shiyulog\shiyu log路径下的文件结构改成与galaxy相同。
+
+调用以下命令：
+python galaxy_assistant/galaxy_main.py -f shiyu_log -s进行分析，区别在于最后需要带-s参数，有这个标志会启用另一套提示词以匹配稍有不同的逻辑。提示词修改位置与galaxy相同。其余命令行参数与galaxy相同。
