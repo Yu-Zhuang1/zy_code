@@ -1,9 +1,9 @@
-import json
 import os
 import sys
 import asyncio
 from pathlib import Path
 import re
+import json
 
 # Add project root to sys.path if not present
 project_root = Path(__file__).resolve().parent.parent
@@ -13,9 +13,131 @@ if str(project_root) not in sys.path:
 from schema import MarkdownResponse
 from miroflow_assistant.log_process import process_log_data
 from utils.file_utils import save_string_to_md
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from llm_client import LLMClient
+
+
+def _truncate_middle(content: str, max_chars: int) -> str:
+    if not isinstance(content, str):
+        return ""
+    if max_chars <= 0:
+        return ""
+    if len(content) <= max_chars:
+        return content
+    marker = "...[truncated]..."
+    head = int(max_chars * 0.65)
+    tail = max_chars - head - len(marker)
+    if tail < 0:
+        return content[:max_chars]
+    return content[:head] + marker + content[-tail:]
+
+
+def _format_prompt_bundle(log: dict) -> str:
+    bundle = log.get("prompt_bundle") if isinstance(log, dict) else None
+    if not isinstance(bundle, dict):
+        return _truncate_middle(
+            json.dumps(log, ensure_ascii=False, indent=2),
+            12000,
+        )
+
+    sections = []
+    task_context = bundle.get("task_context", {})
+    decisive_evidence = bundle.get("decisive_evidence", [])
+    conflict_evidence = bundle.get("conflict_evidence", [])
+    error_summary = bundle.get("error_summary", {})
+    residual_context = bundle.get("residual_context", {})
+    compression_metrics = bundle.get("compression_metrics", {})
+
+    sections.append("### 1) task_context")
+    sections.append(json.dumps(task_context, ensure_ascii=False, indent=2))
+
+    sections.append("### 2) decisive_evidence")
+    sections.append(json.dumps(decisive_evidence, ensure_ascii=False, indent=2))
+
+    sections.append("### 3) conflict_evidence")
+    sections.append(json.dumps(conflict_evidence, ensure_ascii=False, indent=2))
+
+    sections.append("### 4) error_summary")
+    sections.append(json.dumps(error_summary, ensure_ascii=False, indent=2))
+
+    sections.append("### 5) residual_context")
+    sections.append(json.dumps(residual_context, ensure_ascii=False, indent=2))
+
+    sections.append("### 6) compression_metrics")
+    sections.append(json.dumps(compression_metrics, ensure_ascii=False, indent=2))
+
+    payload = "\n\n".join(sections)
+    return _truncate_middle(payload, 20000)
+
+
+def _render_compression_report(log_data: dict, file_path: str) -> str:
+    baseline = log_data.get("baseline_metrics", {})
+    metrics = log_data.get("compression_metrics", {})
+    prompt_bundle = log_data.get("prompt_bundle", {})
+    decisive_evidence = prompt_bundle.get("decisive_evidence", []) if isinstance(prompt_bundle, dict) else []
+    conflict_evidence = prompt_bundle.get("conflict_evidence", []) if isinstance(prompt_bundle, dict) else []
+
+    lines: list[str] = []
+    lines.append("# Compression Report")
+    lines.append("")
+    lines.append(f"- file: `{file_path}`")
+    lines.append(f"- task_id: `{log_data.get('task_id')}`")
+    lines.append(f"- status: `{log_data.get('status')}`")
+    lines.append("")
+    lines.append("## Metrics")
+    lines.append(
+        f"- raw_content_chars: `{metrics.get('raw_content_chars', 0)}`"
+    )
+    lines.append(
+        f"- compressed_content_chars: `{metrics.get('compressed_content_chars', 0)}`"
+    )
+    lines.append(
+        f"- message_char_reduction_ratio: `{metrics.get('message_char_reduction_ratio', 0)}`"
+    )
+    lines.append(f"- raw_prompt_chars: `{metrics.get('raw_prompt_chars', 0)}`")
+    lines.append(
+        f"- compressed_prompt_chars: `{metrics.get('compressed_prompt_chars', 0)}`"
+    )
+    lines.append(
+        f"- prompt_reduction_ratio: `{metrics.get('prompt_reduction_ratio', 0)}`"
+    )
+    lines.append(
+        f"- raw_message_count: `{metrics.get('raw_message_count', 0)}`"
+    )
+    lines.append(
+        f"- compressed_message_count: `{metrics.get('compressed_message_count', 0)}`"
+    )
+    lines.append("")
+    lines.append("## Baseline Summary")
+    lines.append(
+        f"- think_messages: `{baseline.get('think_messages', 0)}`"
+    )
+    lines.append(
+        f"- search_payload_messages: `{baseline.get('search_payload_messages', 0)}`"
+    )
+    lines.append(
+        f"- scrape_server_not_found_messages: `{baseline.get('scrape_server_not_found_messages', 0)}`"
+    )
+    lines.append(
+        f"- google_tool_result_error_messages: `{baseline.get('google_tool_result_error_messages', 0)}`"
+    )
+    lines.append("")
+    lines.append("## Decisive Evidence (Top 5)")
+    for item in decisive_evidence[:5]:
+        excerpt = item.get("excerpt", "") if isinstance(item, dict) else str(item)
+        lines.append(f"- {_truncate_middle(str(excerpt), 260)}")
+    if not decisive_evidence:
+        lines.append("- (none)")
+    lines.append("")
+    lines.append("## Conflict Evidence (Top 5)")
+    for item in conflict_evidence[:5]:
+        excerpt = item.get("excerpt", "") if isinstance(item, dict) else str(item)
+        lines.append(f"- {_truncate_middle(str(excerpt), 260)}")
+    if not conflict_evidence:
+        lines.append("- (none)")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def analysis_prompt(log:dict, answer:str = None):
@@ -38,9 +160,10 @@ def analysis_prompt(log:dict, answer:str = None):
 
     你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
     '''
+    log_payload = _format_prompt_bundle(log)
     user_prompt = f"""
     以下是你需要分析的智能体系统日志：
-    {log}
+    {log_payload}
     """
     if answer:
         user_prompt += f"""
@@ -64,6 +187,7 @@ async def analyze_log_file(file_path, client, answer=None, answers_map=None):
     # Process the log data
     print(f"Loading log from {file_path}")
     log_data = process_log_data(file_path)
+    compression_metrics = log_data.get("compression_metrics", {})
     
     if answers_map:
         task_id = log_data.get('task_id')
@@ -100,10 +224,20 @@ async def analyze_log_file(file_path, client, answer=None, answers_map=None):
     # Determine output file path
     base_name = os.path.splitext(file_path)[0]
     output_path = f"{base_name}_analysis.md"
+    compression_report_path = f"{base_name}_compression_report.md"
     
     # Save the analysis report
     save_string_to_md(analysis_content, output_path)
     print(f"Analysis saved to: {output_path}")
+    compression_report_content = _render_compression_report(log_data, file_path)
+    save_string_to_md(compression_report_content, compression_report_path)
+    print(f"Compression report saved to: {compression_report_path}")
+    return {
+        "task_id": log_data.get("task_id"),
+        "output_path": output_path,
+        "compression_report_path": compression_report_path,
+        "compression_metrics": compression_metrics if isinstance(compression_metrics, dict) else {},
+    }
 
 if __name__ == "__main__":
     from llm_client import LLMClient

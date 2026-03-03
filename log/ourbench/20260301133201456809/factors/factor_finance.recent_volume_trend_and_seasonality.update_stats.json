@@ -1,0 +1,12 @@
+{
+  "agent_role": "factor",
+  "execution_success": true,
+  "llm_calls": 9,
+  "tool_calls": {
+    "get_stock_data": 3,
+    "execute_python_code": 5
+  },
+  "total_tool_calls": 8,
+  "execution_time": 118.31,
+  "total_tokens": 91462
+}

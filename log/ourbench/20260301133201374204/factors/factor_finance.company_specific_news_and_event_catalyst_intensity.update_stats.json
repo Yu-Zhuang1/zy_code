@@ -1,0 +1,13 @@
+{
+  "agent_role": "factor",
+  "execution_success": true,
+  "llm_calls": 5,
+  "tool_calls": {
+    "exa_search": 3,
+    "google_search": 8,
+    "read_webpage": 2
+  },
+  "total_tool_calls": 13,
+  "execution_time": 87.89,
+  "total_tokens": 50795
+}

@@ -1,0 +1,23 @@
+{
+  "agent_role": "expert",
+  "execution_success": true,
+  "llm_calls": 3,
+  "tool_calls": {
+    "factor_common_market_calendar_and_trading_status_guard_sse_guard": 1,
+    "factor_finance_last_verified_volume_and_microtrend_anchor": 1,
+    "factor_finance_recent_volume_trend_and_seasonality_update": 1,
+    "factor_finance_broad_market_liquidity_and_activity_proxy_update": 1,
+    "factor_common_cross_source_volume_reasonableness_check__728774ab": 1
+  },
+  "total_tool_calls": 5,
+  "execution_time": 256.22,
+  "total_tokens": 17684,
+  "factor_tools_used": [
+    "factor_common_market_calendar_and_trading_status_guard_sse_guard",
+    "factor_finance_last_verified_volume_and_microtrend_anchor",
+    "factor_finance_recent_volume_trend_and_seasonality_update",
+    "factor_finance_broad_market_liquidity_and_activity_proxy_update",
+    "factor_common_cross_source_volume_reasonableness_check__728774ab"
+  ],
+  "factor_tools_count": 5
+}

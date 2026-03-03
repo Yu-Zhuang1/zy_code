@@ -1,0 +1,25 @@
+{
+  "agent_role": "expert",
+  "execution_success": true,
+  "llm_calls": 3,
+  "tool_calls": {
+    "factor_common_market_calendar_and_trading_status_guard__27db6521": 1,
+    "factor_finance_last_verified_volume_and_microtrend_anchor": 1,
+    "factor_finance_recent_volume_trend_and_seasonality_update": 1,
+    "factor_finance_company_specific_news_and_event_catalyst_10cc9478": 1,
+    "factor_finance_broad_market_liquidity_and_activity_proxy_update": 1,
+    "factor_common_cross_source_volume_reasonableness_check__855afb7f": 1
+  },
+  "total_tool_calls": 6,
+  "execution_time": 406.99,
+  "total_tokens": 22295,
+  "factor_tools_used": [
+    "factor_common_market_calendar_and_trading_status_guard__27db6521",
+    "factor_finance_last_verified_volume_and_microtrend_anchor",
+    "factor_finance_recent_volume_trend_and_seasonality_update",
+    "factor_finance_company_specific_news_and_event_catalyst_10cc9478",
+    "factor_finance_broad_market_liquidity_and_activity_proxy_update",
+    "factor_common_cross_source_volume_reasonableness_check__855afb7f"
+  ],
+  "factor_tools_count": 6
+}

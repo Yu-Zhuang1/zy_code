@@ -1,50 +1,111 @@
-# zy_code_any
+# zy_code
 
+多智能体日志分析工具集，当前包含三条分析链路：
+- `galaxy_assistant`：Galaxy 风格任务日志分析
+- `miroflow_assistant`：MiroFlow JSON 日志分析（已接入结构化压缩）
+- `shiyu_assistant`：Shiyu 风格任务日志分析（新增完整分析模块）
 
-####Galaxy分析：
+## 1. 环境准备
 
-运行命令python galaxy_assistant/galaxy_main.py -b -f "test" -a "test.json" -m "openai/gpt-5.2" -fc 5 -tc 3
+1. Python 3.10+
+2. 安装依赖（按你本地项目方式安装）
+3. 在项目根目录放置 `.env`
 
--b：是否批量。
+`.env` 至少需要：
+- `OPENROUTER_BASE_URL`
+- `OPENROUTER_API_KEY`
 
--f：日志文件夹路径。如果批量（有-b）则日志路径需要传入任务日志文件夹的父文件夹路径，如test，其下包含两个任务日志文件夹。不加-b则不批量，日志路径需要传入任务日志文件夹路径，如test/685e489b6e8dbd006cdc6f70
+可选：
+- `LLM_TIMEOUT_SECONDS`（默认 10800）
+- `LLM_CLIENT_MAX_RETRIES`（默认 2）
+- `WEB_SEARCH_TOOL_TYPE`（默认 `web_search,web_search_preview`）
 
--a：答案文件路径，需要是一个形如test.json的json文件路径，每个元素的字典至少包含'id'和'ground_truth’两个键。不传入则默认为空，分析时不参照答案。
+## 2. Galaxy 分析
 
--m：模型名称，默认"openai/gpt-5.2"
+入口：`galaxy_assistant/galaxy_main.py`
 
-fc：处理每个任务时内部分析factor的并发数，默认为10，如果遇到并发量限制可调小。
+单任务：
+```bash
+python galaxy_assistant/galaxy_main.py -f "log/ourbench/20260301133201374226" -m "openai/gpt-5.2"
+```
 
-tc：同时处理任务数量的并发数，默认为5，如果遇到并发量限制可调小。
+批量任务：
+```bash
+python galaxy_assistant/galaxy_main.py -b -f "log/ourbench" -m "openai/gpt-5.2" -fc 5 -tc 3
+```
 
-分析报告自动保存到任务日志文件夹下面新建的analysis文件夹下，保存为.md文件。
+参数：
+- `-b, --batch`：批量模式（遍历 `-f` 下子目录）
+- `-f, --folder`：日志目录（必填）
+- `-a, --answers`：答案文件（可选，json，至少含 `id` 和 `ground_truth`）
+- `-m, --model`：模型名，默认 `openai/gpt-5.2`
+- `-fc, --factor-concurrency`：单任务内 factor 并发，默认 10
+- `-tc, --task-concurrency`：批量任务并发，默认 5
+- `-s, --if_shiyudev`：启用 shiyu_dev 风格提示词
 
-如果想要调整指示LLM分析的重点，可以在galaxy_assistant\expert_analysis.py中的galaxy_task_analysis_prompt；以及galaxy_assistant\factor_analysis.py中的factor_analysis_prompt函数中编辑提示词。
+输出：
+- 每个任务目录下生成 `analysis/`
+- 包含 factor 分析与 `expert_analysis.md`
 
+## 3. MiroFlow 分析
 
-####MiroFlow分析：
-运行命令：
-python miroflow_assistant/miroflow_main.py test --parallel --concurrency 10 --model "openai/gpt5.2"
-python miroflow_assistant/miroflow_main.py test\long_text_8D33B3FB-6CB4-4133-BA1F-98B8242BC7BB.json --model "openai/gpt-5.2" --answer_file test.json
+入口：`miroflow_assistant/miroflow_main.py`
 
---parallel：是否批量，若省略，则传入的路径应当是单独的json日志文件路径；若不省略，则传入的路径应当是文件夹路径，文件夹下应包含需要分析的日志文件。生成的分析报告将保存在日志相同目录下。
+单文件：
+```bash
+python miroflow_assistant/miroflow_main.py test/long_text_C3FBBFA9-1F78-40CE-A535-E3B662A5DC24.json --model "openai/gpt-5.2"
+```
 
---concurrency：批量模式并发数，默认为5
+批量目录：
+```bash
+python miroflow_assistant/miroflow_main.py test --parallel --concurrency 5 --model "openai/gpt-5.2"
+```
 
---model：模型名称，默认为"openai/gpt-5.2"
+参数：
+- `path`：json 日志文件或目录路径
+- `--parallel`：目录并行处理开关
+- `--concurrency`：并发数，默认 5
+- `--model`：模型名，默认 `openai/gpt-5.2`
+- `--answer_file`：答案文件（可选）
 
---answer_file 答案文件路径，答案文件的格式要求与galaxy相同，省略则默认不参照答案进行分析
+输出：
+- 与输入 json 同目录生成：
+- `*_analysis.md`
+- `*_compression_report.md`
 
-支持超长日志（4万+行），消息记录截断长度参数可在miroflow_assistant\log_process.py中自行调整，分为普通和激进模式。
+## 4. Shiyu 分析
 
-生成的分析报告将保存在日志相同目录下。
+入口：`shiyu_assistant/shiyu_main.py`
 
-如果希望调整报告的分析内容，可在miroflow_assistant\log_analysis.py的analysis_prompt函数中自行调整提示词。
+单任务：
+```bash
+python shiyu_assistant/shiyu_main.py -f "test/shiyu_log" -m "openai/gpt-5.2"
+```
 
+批量任务：
+```bash
+python shiyu_assistant/shiyu_main.py -b -f "test" -m "openai/gpt-5.2" -fc 5 -tc 3
+```
 
+参数与 Galaxy 基本一致，另外支持：
+- `-re, --reasoning-effort`：传给 `LLMClient` 的 reasoning effort
 
-####shiyu框架分析：
-首先调用shiyu_dev_assistant\document_process.py shiyulog，对形如shiyulog\shiyu log日志文件夹下的日志文件进行整理，以匹配galaxy的查找方式。该代码会将参数目录（如shiyulog）下的所有文件夹（如可能有的与shiyu_log平级的所有文件夹）下的原本的日志文件格式与结构进行整理，将原本的形如shiyulog\shiyu log路径下的文件结构改成与galaxy相同。
+输出：
+- 每个任务目录下生成 `analysis/`
+- 包括 factor/expert 分析及压缩报告
 
-调用以下命令：
-python galaxy_assistant/galaxy_main.py -f shiyu_log -s进行分析，区别在于最后需要带-s参数，有这个标志会启用另一套提示词以匹配稍有不同的逻辑。提示词修改位置与galaxy相同。其余命令行参数与galaxy相同。
+## 5. LLMClient 能力（已合并）
+
+`llm_client.py` 当前为并集接口：
+- 支持 `reasoning_effort`
+- 支持 timeout / retry 环境变量
+- 支持 `use_web_search=True` 及搜索工具类型回退
+
+## 6. 目录说明
+
+- `galaxy_assistant/`：Galaxy 分析逻辑
+- `miroflow_assistant/`：MiroFlow 分析逻辑
+- `shiyu_assistant/`：Shiyu 分析逻辑
+- `shiyu_dev_assistant/`：Shiyu 日志预处理工具
+- `test/`：样例与测试数据
+- `log/`：运行输出目录

@@ -1,0 +1,11 @@
+{
+  "agent_role": "main",
+  "execution_success": true,
+  "llm_calls": 0,
+  "tool_calls": {
+    "expert_finance_asset_volume_hkex": 1
+  },
+  "total_tool_calls": 1,
+  "execution_time": 408.33,
+  "total_tokens": 0
+}
