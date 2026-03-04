@@ -3,6 +3,7 @@ import asyncio
 import sys
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
 
 # Add project root to sys.path to allow imports from utils and other modules
@@ -41,11 +42,33 @@ FORMAT_NOISE_MARKERS = (
     "return only a valid json object",
 )
 
-DEFAULT_EXPERT_MAX_CHARS = 12600
-DEFAULT_FACTOR_MAX_CHARS = 8600
-RELAXED_EXPERT_MAX_CHARS = 16800
-RELAXED_FACTOR_MAX_CHARS = 11200
-DEFAULT_KEY_FIELD_HIT_RATE_THRESHOLD = 0.90
+DEFAULT_EXPERT_MAX_CHARS = 7600
+DEFAULT_FACTOR_MAX_CHARS = 3800
+RELAXED_EXPERT_MAX_CHARS = 9800
+RELAXED_FACTOR_MAX_CHARS = 5600
+DEFAULT_KEY_FIELD_HIT_RATE_THRESHOLD = 0.82
+DEFAULT_FACTOR_KEY_FIELD_HIT_RATE_THRESHOLD = 0.24
+MAX_MISSING_BACKFILL_PER_PAYLOAD = 8
+
+DATE_TOKEN_RE = re.compile(
+    r"\b20\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12]\d|3[01])\b"
+)
+URL_TOKEN_RE = re.compile(r"https?://[^\s)\]>\"'\\]+")
+
+AGGRESSIVE_LOG_SECTION_LIMITS: dict[str, dict[str, int]] = {
+    "task_context": {"max_items": 3, "max_chars": 150},
+    "tool_trace_compact": {"max_items": 6, "max_chars": 150},
+    "key_findings": {"max_items": 12, "max_chars": 180},
+    "error_summary": {"max_items": 3, "max_chars": 150},
+    "final_decision": {"max_items": 5, "max_chars": 180},
+    "residual_context": {"max_items": 2, "max_chars": 140},
+}
+
+AGGRESSIVE_FACTOR_SECTION_LIMITS: dict[str, dict[str, int]] = {
+    "report_compact": {"max_items": 7, "max_chars": 170},
+    "aggregate_findings": {"max_items": 9, "max_chars": 170},
+    "aggregate_errors": {"max_items": 3, "max_chars": 150},
+}
 
 
 def _truncate_middle(text: str, max_chars: int) -> str:
@@ -108,6 +131,235 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
         seen.add(key)
         results.append(normalized)
     return results
+
+
+def _normalize_key(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _minify_json_text(text: str) -> str:
+    if not isinstance(text, str):
+        return ""
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return text.strip()
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+
+def _render_compact_payload(payload: dict[str, Any], max_chars: int, profile: str) -> str:
+    direct = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if len(direct) <= max_chars:
+        return direct
+    rendered = format_compressed_payload(
+        payload,
+        max_chars=max_chars,
+        profile=profile,
+    )
+    return _minify_json_text(rendered)
+
+
+def _is_priority_line(line: str) -> bool:
+    lowered = line.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "strict_final_boxed",
+            "strict_final_source",
+            "fallback_final_candidate",
+            "recover_boxed",
+            "recover_url",
+            "recover_date",
+            "boxed:",
+            "\\boxed",
+            "url:",
+            "key_numbers_dates",
+        )
+    ):
+        return True
+    if URL_TOKEN_RE.search(line):
+        return True
+    if DATE_TOKEN_RE.search(line):
+        return True
+    return False
+
+
+def _line_priority_score(line: str, section: str) -> int:
+    lowered = line.lower()
+    score = 0
+    if _is_priority_line(line):
+        score += 80
+    if section == "final_decision":
+        score += 25
+    if section in {"key_findings", "aggregate_findings"}:
+        if any(token in lowered for token in ("evidence", "signal", "confidence", "source")):
+            score += 10
+    if section in {"error_summary", "aggregate_errors"} and any(
+        token in lowered for token in ("error", "failed", "timeout", "429", "403")
+    ):
+        score += 8
+    if "assistant@" in lowered or "tool@" in lowered or "report_" in lowered:
+        score += 3
+    if len(line) <= 120:
+        score += 2
+    return score
+
+
+def _prune_section_items(
+    items: list[Any],
+    section: str,
+    max_items: int,
+    max_line_chars: int,
+) -> list[str]:
+    prepared: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(items):
+        line = str(item).strip()
+        if not line or _is_format_noise(line):
+            continue
+        if _normalize_key(line).startswith("- recover_"):
+            # Keep recovered key fields intact to preserve exact URL/date/boxed matching.
+            line = _truncate_middle(line, 600)
+        else:
+            line = _truncate_middle(line, max_line_chars)
+        key = _normalize_key(line)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        prepared.append(
+            {
+                "idx": idx,
+                "line": line,
+                "score": _line_priority_score(line, section),
+                "priority": _is_priority_line(line),
+            }
+        )
+
+    if not prepared:
+        return []
+
+    priority_rows = sorted(
+        (row for row in prepared if row["priority"]),
+        key=lambda row: (row["score"], row["idx"]),
+        reverse=True,
+    )
+    normal_rows = sorted(
+        (row for row in prepared if not row["priority"]),
+        key=lambda row: (row["score"], row["idx"]),
+        reverse=True,
+    )
+
+    selected: list[dict[str, Any]] = []
+    for row in priority_rows + normal_rows:
+        if len(selected) >= max_items:
+            break
+        selected.append(row)
+
+    selected.sort(key=lambda row: row["idx"])
+    return [row["line"] for row in selected]
+
+
+def _apply_section_pruning(
+    payload: dict[str, Any],
+    section_limits: dict[str, dict[str, int]],
+) -> dict[str, Any]:
+    pruned = deepcopy(payload)
+    for section, limits in section_limits.items():
+        items = pruned.get(section)
+        if isinstance(items, list):
+            pruned[section] = _prune_section_items(
+                items,
+                section=section,
+                max_items=int(limits.get("max_items", 8)),
+                max_line_chars=int(limits.get("max_chars", 180)),
+            )
+            if not pruned[section]:
+                pruned.pop(section, None)
+
+    pruned.pop("compression_metrics", None)
+
+    meta = pruned.get("meta")
+    if isinstance(meta, dict):
+        compact_meta = {}
+        for key in ("total_messages", "strict_boxed_detection"):
+            if key in meta:
+                compact_meta[key] = meta[key]
+        if compact_meta:
+            pruned["meta"] = compact_meta
+        else:
+            pruned.pop("meta", None)
+    return pruned
+
+
+def _parse_missing_field_entry(entry: str) -> tuple[str, str] | None:
+    if not isinstance(entry, str) or ":" not in entry:
+        return None
+    field_type, value = entry.split(":", 1)
+    field_type = field_type.strip().lower()
+    value = value.strip()
+    if not field_type or not value:
+        return None
+    if field_type == "url":
+        matched = URL_TOKEN_RE.search(value)
+        value = matched.group(0).strip() if matched else value
+    elif field_type == "date":
+        matched = DATE_TOKEN_RE.search(value)
+        value = matched.group(0).strip() if matched else value
+    elif field_type == "boxed":
+        matched = BOXED_RE.search(value)
+        value = matched.group(0).strip() if matched else value
+    else:
+        return None
+    if not value:
+        return None
+    return field_type, value
+
+
+def _inject_missing_key_fields(
+    payload: dict[str, Any],
+    missing_examples: list[str],
+    section_name: str,
+    max_items: int = MAX_MISSING_BACKFILL_PER_PAYLOAD,
+) -> int:
+    if max_items <= 0:
+        return 0
+    section_items = payload.get(section_name)
+    if not isinstance(section_items, list):
+        section_items = []
+    existing_keys = {_normalize_key(str(item)) for item in section_items}
+    injected = 0
+
+    for raw in missing_examples:
+        if injected >= max_items:
+            break
+        parsed = _parse_missing_field_entry(raw)
+        if not parsed:
+            continue
+        field_type, value = parsed
+        if field_type == "boxed":
+            line = f"- recover_boxed: {value}"
+        elif field_type == "url":
+            line = f"- recover_url: {value}"
+        else:
+            line = f"- recover_date: {value}"
+        if field_type != "url":
+            line = _truncate_middle(line, 220)
+        key = _normalize_key(line)
+        if not key or key in existing_keys:
+            continue
+        section_items.append(line)
+        existing_keys.add(key)
+        injected += 1
+
+    payload[section_name] = section_items
+    return injected
+
+
+def _hit_rate(hit: dict[str, Any]) -> float:
+    try:
+        return float(hit.get("hit_rate", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _extract_strict_final_boxed(log_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -232,41 +484,69 @@ def build_expert_prompt_payload(
         Dict containing prompt messages and compression artifacts.
     """
     log_rows = read_jsonl(path)
-    compressed_log = compress_log_messages(log_rows, source_path=path)
-    compressed_factor_reports = compress_markdown_reports(factor_analysis)
+    raw_log_text = json.dumps(log_rows, ensure_ascii=False)
+    raw_factor_text = json.dumps(factor_analysis, ensure_ascii=False)
+    compressed_log_raw = compress_log_messages(log_rows, source_path=path)
+    compressed_factor_reports_raw = compress_markdown_reports(factor_analysis)
 
     strict_boxed = _extract_strict_final_boxed(log_rows)
     fallback_candidate = None if strict_boxed else _extract_fallback_final_candidate(log_rows)
-    _inject_final_decision(compressed_log, strict_boxed, fallback_candidate)
+    _inject_final_decision(compressed_log_raw, strict_boxed, fallback_candidate)
+
+    compressed_log = _apply_section_pruning(compressed_log_raw, AGGRESSIVE_LOG_SECTION_LIMITS)
+    compressed_factor_reports = _apply_section_pruning(
+        compressed_factor_reports_raw,
+        AGGRESSIVE_FACTOR_SECTION_LIMITS,
+    )
 
     expert_max_chars = DEFAULT_EXPERT_MAX_CHARS
     factor_max_chars = DEFAULT_FACTOR_MAX_CHARS
+    factor_hit_rate_threshold = min(
+        DEFAULT_FACTOR_KEY_FIELD_HIT_RATE_THRESHOLD,
+        key_field_hit_rate_threshold,
+    )
+    log_backfill_count = 0
+    factor_backfill_count = 0
 
-    compressed_log_text = format_compressed_payload(
+    compressed_log_text = _render_compact_payload(
         compressed_log,
         max_chars=expert_max_chars,
         profile="expert",
     )
-    compressed_factor_text = format_compressed_payload(
+    compressed_factor_text = _render_compact_payload(
         compressed_factor_reports,
         max_chars=factor_max_chars,
         profile="factor",
     )
 
-    # 若关键字段命中率偏低，放宽预算后重渲染一次，优先保证高保真。
-    raw_log_text = json.dumps(log_rows, ensure_ascii=False)
-    raw_factor_text = json.dumps(factor_analysis, ensure_ascii=False)
     expert_hit = calculate_key_field_hit_rate(raw_log_text, compressed_log_text)
     factor_hit = calculate_key_field_hit_rate(raw_factor_text, compressed_factor_text)
-    if float(expert_hit.get("hit_rate", 0.0)) < key_field_hit_rate_threshold:
-        expert_max_chars = RELAXED_EXPERT_MAX_CHARS
-        factor_max_chars = RELAXED_FACTOR_MAX_CHARS
-        compressed_log_text = format_compressed_payload(
+
+    log_backfill_count += _inject_missing_key_fields(
+        compressed_log,
+        expert_hit.get("missing_examples", []),
+        section_name="key_field_backfill",
+        max_items=MAX_MISSING_BACKFILL_PER_PAYLOAD,
+    )
+    factor_backfill_count += _inject_missing_key_fields(
+        compressed_factor_reports,
+        factor_hit.get("missing_examples", []),
+        section_name="aggregate_findings",
+        max_items=MAX_MISSING_BACKFILL_PER_PAYLOAD,
+    )
+
+    if log_backfill_count or factor_backfill_count:
+        compressed_log = _apply_section_pruning(compressed_log, AGGRESSIVE_LOG_SECTION_LIMITS)
+        compressed_factor_reports = _apply_section_pruning(
+            compressed_factor_reports,
+            AGGRESSIVE_FACTOR_SECTION_LIMITS,
+        )
+        compressed_log_text = _render_compact_payload(
             compressed_log,
             max_chars=expert_max_chars,
             profile="expert",
         )
-        compressed_factor_text = format_compressed_payload(
+        compressed_factor_text = _render_compact_payload(
             compressed_factor_reports,
             max_chars=factor_max_chars,
             profile="factor",
@@ -274,17 +554,70 @@ def build_expert_prompt_payload(
         expert_hit = calculate_key_field_hit_rate(raw_log_text, compressed_log_text)
         factor_hit = calculate_key_field_hit_rate(raw_factor_text, compressed_factor_text)
 
-    expert_metrics = compressed_log.get("compression_metrics", {})
-    factor_metrics = compressed_factor_reports.get("compression_metrics", {})
-    expert_raw_chars = int(expert_metrics.get("raw_chars", 0) or 0)
-    expert_compressed_chars = int(expert_metrics.get("compressed_chars", 0) or 0)
-    factor_raw_chars = int(factor_metrics.get("raw_chars", 0) or 0)
-    factor_compressed_chars = int(factor_metrics.get("compressed_chars", 0) or 0)
+    needs_relax = (
+        _hit_rate(expert_hit) < key_field_hit_rate_threshold
+        or _hit_rate(factor_hit) < factor_hit_rate_threshold
+    )
+    if needs_relax:
+        expert_max_chars = RELAXED_EXPERT_MAX_CHARS
+        factor_max_chars = RELAXED_FACTOR_MAX_CHARS
+        compressed_log_text = _render_compact_payload(
+            compressed_log,
+            max_chars=expert_max_chars,
+            profile="expert",
+        )
+        compressed_factor_text = _render_compact_payload(
+            compressed_factor_reports,
+            max_chars=factor_max_chars,
+            profile="factor",
+        )
+        expert_hit = calculate_key_field_hit_rate(raw_log_text, compressed_log_text)
+        factor_hit = calculate_key_field_hit_rate(raw_factor_text, compressed_factor_text)
+
+        extra_log_backfill = _inject_missing_key_fields(
+            compressed_log,
+            expert_hit.get("missing_examples", []),
+            section_name="key_field_backfill",
+            max_items=MAX_MISSING_BACKFILL_PER_PAYLOAD,
+        )
+        extra_factor_backfill = _inject_missing_key_fields(
+            compressed_factor_reports,
+            factor_hit.get("missing_examples", []),
+            section_name="aggregate_findings",
+            max_items=MAX_MISSING_BACKFILL_PER_PAYLOAD,
+        )
+        log_backfill_count += extra_log_backfill
+        factor_backfill_count += extra_factor_backfill
+        if extra_log_backfill or extra_factor_backfill:
+            compressed_log = _apply_section_pruning(compressed_log, AGGRESSIVE_LOG_SECTION_LIMITS)
+            compressed_factor_reports = _apply_section_pruning(
+                compressed_factor_reports,
+                AGGRESSIVE_FACTOR_SECTION_LIMITS,
+            )
+            compressed_log_text = _render_compact_payload(
+                compressed_log,
+                max_chars=expert_max_chars,
+                profile="expert",
+            )
+            compressed_factor_text = _render_compact_payload(
+                compressed_factor_reports,
+                max_chars=factor_max_chars,
+                profile="factor",
+            )
+            expert_hit = calculate_key_field_hit_rate(raw_log_text, compressed_log_text)
+            factor_hit = calculate_key_field_hit_rate(raw_factor_text, compressed_factor_text)
+
+    expert_metrics = compressed_log_raw.get("compression_metrics", {})
+    factor_metrics = compressed_factor_reports_raw.get("compression_metrics", {})
+    expert_raw_chars = int(expert_metrics.get("raw_chars", len(raw_log_text)) or 0)
+    factor_raw_chars = int(factor_metrics.get("raw_chars", len(raw_factor_text)) or 0)
+    expert_prompt_chars = len(compressed_log_text)
+    factor_prompt_chars = len(compressed_factor_text)
     raw_prompt_chars = expert_raw_chars + factor_raw_chars
-    compressed_prompt_chars = len(compressed_log_text) + len(compressed_factor_text)
+    compressed_prompt_chars = expert_prompt_chars + factor_prompt_chars
     prompt_reduction_ratio = round(_safe_ratio(compressed_prompt_chars, raw_prompt_chars), 4)
-    expert_reduction_ratio = round(_safe_ratio(expert_compressed_chars, expert_raw_chars), 4)
-    factor_reduction_ratio = round(_safe_ratio(factor_compressed_chars, factor_raw_chars), 4)
+    expert_reduction_ratio = round(_safe_ratio(expert_prompt_chars, expert_raw_chars), 4)
+    factor_reduction_ratio = round(_safe_ratio(factor_prompt_chars, factor_raw_chars), 4)
 
     compression_header = (
         f"expert_raw={expert_metrics.get('raw_chars', 'n/a')}, "
@@ -367,6 +700,12 @@ def build_expert_prompt_payload(
             "prompt_reduction_ratio": prompt_reduction_ratio,
             "expert_reduction_ratio": expert_reduction_ratio,
             "factor_reduction_ratio": factor_reduction_ratio,
+            "expert_prompt_chars": expert_prompt_chars,
+            "factor_prompt_chars": factor_prompt_chars,
+            "expert_budget_chars": expert_max_chars,
+            "factor_budget_chars": factor_max_chars,
+            "log_backfill_count": log_backfill_count,
+            "factor_backfill_count": factor_backfill_count,
         },
     }
 
