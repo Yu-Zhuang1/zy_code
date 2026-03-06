@@ -26,7 +26,7 @@
 
 单任务：
 ```bash
-python galaxy_assistant/galaxy_main.py -f "log/ourbench/20260301133201374226" -m "google/gemini-2.5-pro --reasoning-effort low"
+python galaxy_assistant/galaxy_main.py -f "log/ourbench/20260301133201374226" -m "google/gemini-2.5-pro" --reasoning-effort low
 ```
 
 批量任务：
