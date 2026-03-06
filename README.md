@@ -26,19 +26,19 @@
 
 单任务：
 ```bash
-python galaxy_assistant/galaxy_main.py -f "log/ourbench/20260301133201374226" -m "openai/gpt-5.2"
+python galaxy_assistant/galaxy_main.py -f "log/ourbench/20260301133201374226" -m "google/gemini-2.5-pro --reasoning-effort low"
 ```
 
 批量任务：
 ```bash
-python galaxy_assistant/galaxy_main.py -b -f "log/ourbench" -m "openai/gpt-5.2" -fc 5 -tc 3
+python galaxy_assistant/galaxy_main.py -b -f "log/ourbench" -m "google/gemini-2.5-pro" -fc 5 -tc 3 --reasoning-effort low
 ```
 
 参数：
 - `-b, --batch`：批量模式（遍历 `-f` 下子目录）
 - `-f, --folder`：日志目录（必填）
 - `-a, --answers`：答案文件（可选，json，至少含 `id` 和 `ground_truth`）
-- `-m, --model`：模型名，默认 `openai/gpt-5.2`
+- `-m, --model`：模型名，默认 `google/gemini-2.5-pro`
 - `-fc, --factor-concurrency`：单任务内 factor 并发，默认 10
 - `-tc, --task-concurrency`：批量任务并发，默认 5
 - `-s, --if_shiyudev`：启用 shiyu_dev 风格提示词
@@ -53,19 +53,19 @@ python galaxy_assistant/galaxy_main.py -b -f "log/ourbench" -m "openai/gpt-5.2" 
 
 单文件：
 ```bash
-python miroflow_assistant/miroflow_main.py test/long_text_C3FBBFA9-1F78-40CE-A535-E3B662A5DC24.json --model "openai/gpt-5.2"
+python miroflow_assistant/miroflow_main.py test/long_text_C3FBBFA9-1F78-40CE-A535-E3B662A5DC24.json --model "google/gemini-2.5-pro" --reasoning-effort low
 ```
 
 批量目录：
 ```bash
-python miroflow_assistant/miroflow_main.py test --parallel --concurrency 5 --model "openai/gpt-5.2"
+python miroflow_assistant/miroflow_main.py test --parallel --concurrency 5 --model "google/gemini-2.5-pro" --reasoning-effort low
 ```
 
 参数：
 - `path`：json 日志文件或目录路径
 - `--parallel`：目录并行处理开关
 - `--concurrency`：并发数，默认 5
-- `--model`：模型名，默认 `openai/gpt-5.2`
+- `--model`：模型名，默认 `google/gemini-2.5-pro`
 - `--answer_file`：答案文件（可选）
 
 输出：
@@ -79,16 +79,16 @@ python miroflow_assistant/miroflow_main.py test --parallel --concurrency 5 --mod
 
 单任务：
 ```bash
-python shiyu_assistant/shiyu_main.py -f "test/shiyu_log" -m "openai/gpt-5.2"
+python shiyu_assistant/shiyu_main.py -f "test/shiyu_log" -m "google/gemini-2.5-pro" --reasoning-effort low
 ```
 
 批量任务：
 ```bash
-python shiyu_assistant/shiyu_main.py -b -f "test" -m "openai/gpt-5.2" -fc 5 -tc 3
+python shiyu_assistant/shiyu_main.py -b -f "test" -m "google/gemini-2.5-pro" -fc 5 -tc 3 --reasoning-effort low
 ```
 
 参数与 Galaxy 基本一致，另外支持：
-- `-re, --reasoning-effort`：传给 `LLMClient` 的 reasoning effort
+- `-re, --reasoning-effort`：传给 `LLMClient` 的 reasoning effort （可选项`low`、`medium`、`high`）
 
 输出：
 - 每个任务目录下生成 `analysis/`
