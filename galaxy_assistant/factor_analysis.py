@@ -417,10 +417,11 @@ def _build_prompt_text(log_content: str, use_alternative_prompt: bool) -> tuple[
         你是一个日志分析专家。你现在正在对一个执行预测任务的多智能体系统的部分日志执行分析工作。
         这个多智能体系统由一个主智能体负责统筹调度和任务分解，调用子智能体对子任务进行分析。
         你的任务是分析其中的一个子智能体的日志。
-        你需要分析子智能体找到了哪些关键指标和数值，分析子智能体做出决策的依据是什么。
-        你还需要分析子智能体的工具调用质量和效果，是否发生了错误。
-        你还需要分析子智能体的整个工作流程，检查是否合理。
+        请将你的分析过程明确分为以下两个阶段：
+        1. 流程梳理：分析子智能体的整个工作流程，它找到了哪些关键指标和数值，以及它做出决策的依据是什么。检查流程是否合理。
+        2. 错误检查：详细检查子智能体的工具调用质量和效果，明确指出是否发生了任何错误、遗漏或不合理的行为。
         你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
+        【重要】：你现在具备了联网搜索能力（search_web工具）。在分析过程中，如果你遇到了不确定的专业术语、报错代码、API变更、或者是需要核对关键事实，请大胆先调用搜索工具来获取背景信息，然后再做出准确判断。
         """
         user_prompt = f"""
         子智能体日志：
@@ -433,10 +434,13 @@ def _build_prompt_text(log_content: str, use_alternative_prompt: bool) -> tuple[
         你是一个日志分析专家。你现在正在对一个执行预测任务的多智能体系统的部分日志执行分析工作。
         这个多智能体系统由一个专家智能体调用多个子智能体进行分析，最后子智能体的结果交由专家智能体进行聚合。
         你的任务是分析其中的一个子智能体的日志。
-        你需要分析子智能体找到了哪些关键指标和数值，分析子智能体做出决策的依据是什么。
-        你还需要分析子智能体的工具调用质量和效果，是否发生了错误。
-        你还需要分析子智能体的整个工作流程，检查是否合理。
+
+        请将你的分析过程明确分为以下两个阶段：
+        1. 流程梳理：分析子智能体的整个工作流程，它找到了哪些关键指标和数值，以及它做出决策的依据是什么。检查流程是否合理。
+        2. 错误检查：详细检查子智能体的工具调用质量和效果，明确指出是否发生了任何错误、遗漏或不合理的行为。
         你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
+
+        【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。由于搜索次数有限，请务必按照重要性顺序，优先搜索最核心、最可能导致严重误判的疑点。不要靠猜测下结论，充分利用你的搜索权限！
         """
         user_prompt = f"""
         以下是你需要分析的子智能体的日志：
@@ -626,8 +630,12 @@ async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_pro
     print(_format_factor_prompt_stats(payload, path))
     messages = payload["messages"]
     
-    # Using chat_structured to enforce MarkdownResponse schema
-    response = await client.chat_structured(messages, response_format=MarkdownResponse)
+    # Using chat_structured to enforce MarkdownResponse schema with web search enabled
+    response = await client.chat_structured(
+        messages, 
+        response_format=MarkdownResponse,
+        use_web_search=True
+    )
     
     return response.content
 

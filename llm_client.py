@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -10,7 +11,12 @@ from pydantic import BaseModel
 
 from schema import ResponseFormat
 
+from schema import ResponseFormat
+
+from utils.serper_client import search_web
+
 DEFAULT_REASONING_EFFORT = "low"
+DEFAULT_MAX_WEB_SEARCH_LOOPS = 8
 
 
 def get_project_root() -> Path:
@@ -140,6 +146,61 @@ class LLMClient:
         """Async context manager exit."""
         await self.close()
 
+    async def _execute_tool_calls(self, tool_calls, messages: list[dict]):
+        """Execute python functions requested by LLM and append results to messages."""
+        tool_results_added = False
+        for tool_call in tool_calls:
+            function_name = getattr(tool_call.function, "name", "")
+            arguments_str = getattr(tool_call.function, "arguments", "{}")
+            tool_call_id = getattr(tool_call, "id", "")
+            
+            try:
+                kwargs = json.loads(arguments_str)
+            except json.JSONDecodeError:
+                kwargs = {}
+                
+            if function_name == "search_web":
+                query = kwargs.get("query", "")
+                print(f"[Tool Call] Executing search_web for: {query}")
+                result = await search_web(query)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": result
+                })
+                tool_results_added = True
+            else:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": f"Error: Tool '{function_name}' is not supported by this client."
+                })
+                tool_results_added = True
+                
+        return tool_results_added
+
+    def _build_serper_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema tool definition for search_web."""
+        return {
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the internet using Serper API to find recent information, technical details, or factual evidence.",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query string."
+                        }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False
+                }
+            }
+        }
+
     async def chat(self, messages: list[dict], use_web_search: bool = False, **kwargs) -> str:
         """
         Send a chat completion request.
@@ -155,45 +216,49 @@ class LLMClient:
         tools = kwargs.pop("tools", None)
         tool_choice = kwargs.pop("tool_choice", None)
         request_kwargs = self._with_default_reasoning(kwargs)
-
-        response = None
-        last_error = None
+        
+        # We handle tool calls internally now if use_web_search is True
         if use_web_search:
-            for tool_type in self.web_search_tool_types:
-                try:
-                    request_kwargs_with_search = dict(request_kwargs)
-                    merged_tools = self._merge_tools(tools, web_search_tool_type=tool_type)
-                    if merged_tools:
-                        request_kwargs_with_search["tools"] = merged_tools
-                        request_kwargs_with_search["tool_choice"] = tool_choice or "auto"
+            merged_tools = []
+            if tools:
+                merged_tools.extend(tools)
+            merged_tools.append(self._build_serper_tool_schema())
+            request_kwargs["tools"] = merged_tools
+            if not tool_choice:
+                request_kwargs["tool_choice"] = "auto"
+        elif tools:
+            request_kwargs["tools"] = tools
+            if tool_choice:
+                request_kwargs["tool_choice"] = tool_choice
 
-                    response = await self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        **request_kwargs_with_search,
-                    )
-                    break
-                except Exception as exc:
-                    last_error = exc
-                    print(f"Warning: web search tool '{tool_type}' failed ({exc}). Trying fallback.")
-
-        if response is None:
-            if use_web_search and last_error:
-                print("Warning: web search unavailable, retrying without search tool.")
-
-            request_kwargs_no_search = dict(request_kwargs)
-            merged_tools = self._merge_tools(tools)
-            if merged_tools:
-                request_kwargs_no_search["tools"] = merged_tools
-                request_kwargs_no_search["tool_choice"] = tool_choice or "auto"
+        current_messages = list(messages)
+        max_tool_loops = DEFAULT_MAX_WEB_SEARCH_LOOPS
+        
+        for i in range(max_tool_loops):
+            kwargs_for_this_loop = dict(request_kwargs)
+            # On the final loop, force the model to answer by removing tools
+            if i == max_tool_loops - 1 and "tools" in kwargs_for_this_loop:
+                print("Warning: Max tool loops reached. Forcing final answer by disabling tools.")
+                kwargs_for_this_loop.pop("tools")
+                kwargs_for_this_loop.pop("tool_choice", None)
 
             response = await self.client.chat.completions.create(
                 model=self.model_name,
-                messages=messages,
-                **request_kwargs_no_search,
+                messages=current_messages,
+                **kwargs_for_this_loop,
             )
-
-        return response.choices[0].message.content
+            
+            message = response.choices[0].message
+            current_messages.append(message.model_dump(exclude_none=True))
+            
+            if message.tool_calls:
+                # Execute tools and append results
+                await self._execute_tool_calls(message.tool_calls, current_messages)
+                # Loop continues, sending the results back to the LLM
+            else:
+                return message.content or ""
+                
+        return "Error: Maximum tool execution loops reached without final answer."
 
     async def chat_structured(
         self,
@@ -218,48 +283,50 @@ class LLMClient:
         tool_choice = kwargs.pop("tool_choice", None)
         request_kwargs = self._with_default_reasoning(kwargs)
 
-        response = None
-        last_error = None
+        # We handle tool calls internally now if use_web_search is True
         if use_web_search:
-            for tool_type in self.web_search_tool_types:
-                try:
-                    request_kwargs_with_search = dict(request_kwargs)
-                    merged_tools = self._merge_tools(tools, web_search_tool_type=tool_type)
-                    if merged_tools:
-                        request_kwargs_with_search["tools"] = merged_tools
-                        request_kwargs_with_search["tool_choice"] = tool_choice or "auto"
+            merged_tools = []
+            if tools:
+                merged_tools.extend(tools)
+            merged_tools.append(self._build_serper_tool_schema())
+            request_kwargs["tools"] = merged_tools
+            if not tool_choice:
+                request_kwargs["tool_choice"] = "auto"
+        elif tools:
+            request_kwargs["tools"] = tools
+            if tool_choice:
+                request_kwargs["tool_choice"] = tool_choice
 
-                    response = await self.client.beta.chat.completions.parse(
-                        model=self.model_name,
-                        messages=messages,
-                        response_format=response_format,
-                        **request_kwargs_with_search,
-                    )
-                    break
-                except Exception as exc:
-                    last_error = exc
-                    print(
-                        f"Warning: structured call with web search '{tool_type}' failed ({exc}). Trying fallback."
-                    )
+        current_messages = list(messages)
+        max_tool_loops = DEFAULT_MAX_WEB_SEARCH_LOOPS
+        
+        for i in range(max_tool_loops):
+            kwargs_for_this_loop = dict(request_kwargs)
+            # On the final loop, force the model to answer by removing tools
+            if i == max_tool_loops - 1 and "tools" in kwargs_for_this_loop:
+                print("Warning: Max tool loops reached in structured call. Forcing parsed output by disabling tools.")
+                kwargs_for_this_loop.pop("tools")
+                kwargs_for_this_loop.pop("tool_choice", None)
 
-        if response is None:
-            if use_web_search and last_error:
-                print("Warning: structured call fallback to request without web search.")
-
-            request_kwargs_no_search = dict(request_kwargs)
-            merged_tools = self._merge_tools(tools)
-            if merged_tools:
-                request_kwargs_no_search["tools"] = merged_tools
-                request_kwargs_no_search["tool_choice"] = tool_choice or "auto"
-
+            # Beta parse API
             response = await self.client.beta.chat.completions.parse(
                 model=self.model_name,
-                messages=messages,
+                messages=current_messages,
                 response_format=response_format,
-                **request_kwargs_no_search,
+                **kwargs_for_this_loop,
             )
+            
+            message = response.choices[0].message
+            # Append the assistant message exactly as it came back
+            current_messages.append(message.model_dump(exclude_none=True))
+            
+            if message.tool_calls:
+                # Execute tools and append results
+                await self._execute_tool_calls(message.tool_calls, current_messages)
+            else:
+                return message.parsed
 
-        return response.choices[0].message.parsed
+        return None
 
     async def chat_stream(self, messages: list[dict], use_web_search: bool = False, **kwargs):
         """
