@@ -44,6 +44,12 @@ def parse_args():
         help="Model name (e.g., openai/gpt-4o)"
     )
     parser.add_argument(
+        "-re", "--reasoning-effort",
+        type=str,
+        default=None,
+        help="Reasoning effort passed to LLMClient (e.g., low/medium/high/none).",
+    )
+    parser.add_argument(
         "-fc", "--factor-concurrency",
         type=int,
         default=10,
@@ -127,7 +133,7 @@ async def main():
         print(f"Loaded {len(answers)} answers.")
     
     # Create LLM client
-    async with LLMClient(args.model) as client:
+    async with LLMClient(args.model, reasoning_effort=args.reasoning_effort) as client:
         if args.batch:
             # Batch mode: analyze all subfolders
             await run_batch_analysis(

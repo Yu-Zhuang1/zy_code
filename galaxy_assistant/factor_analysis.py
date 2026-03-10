@@ -631,11 +631,21 @@ async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_pro
     messages = payload["messages"]
     
     # Using chat_structured to enforce MarkdownResponse schema with web search enabled
-    response = await client.chat_structured(
-        messages, 
-        response_format=MarkdownResponse,
-        use_web_search=True
-    )
-    
+    try:
+        response = await client.chat_structured(
+            messages,
+            response_format=MarkdownResponse,
+            use_web_search=True
+        )
+    except (ValueError, Exception) as e:
+        factor_name = Path(path).stem
+        print(f"Error analyzing factor {factor_name}: {e}")
+        return f"# Factor Analysis Failed\n\nFactor: `{factor_name}`\n\nError: {e}\n"
+
+    if response is None:
+        factor_name = Path(path).stem
+        print(f"Warning: No response for factor {factor_name} (max tool loops exhausted)")
+        return f"# Factor Analysis Incomplete\n\nFactor: `{factor_name}`\n\nThe model exhausted tool call loops without producing a final response.\n"
+
     return response.content
 

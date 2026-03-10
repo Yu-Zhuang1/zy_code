@@ -11,8 +11,6 @@ from pydantic import BaseModel
 
 from schema import ResponseFormat
 
-from schema import ResponseFormat
-
 from utils.serper_client import search_web
 
 DEFAULT_REASONING_EFFORT = "low"
@@ -201,6 +199,68 @@ class LLMClient:
             }
         }
 
+    @staticmethod
+    def _extract_message_text(message: Any) -> str:
+        """Extract plain text content from an SDK message object."""
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            return ""
+
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text" and isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+                continue
+
+            item_type = getattr(item, "type", None)
+            if item_type == "text":
+                text_value = getattr(item, "text", None)
+                if isinstance(text_value, str):
+                    parts.append(text_value)
+                    continue
+                nested_value = getattr(text_value, "value", None)
+                if isinstance(nested_value, str):
+                    parts.append(nested_value)
+
+        return "".join(parts)
+
+    @classmethod
+    def _coerce_structured_response(
+        cls,
+        response_format: type[BaseModel],
+        message: Any,
+    ) -> Optional[BaseModel]:
+        """Best-effort conversion when SDK parsed output is missing."""
+        parsed = getattr(message, "parsed", None)
+        if parsed is not None:
+            return parsed
+
+        raw_text = cls._extract_message_text(message).strip()
+        if not raw_text:
+            return None
+
+        model_fields = getattr(response_format, "model_fields", {})
+        if set(model_fields) == {"content"}:
+            return response_format(content=raw_text)
+
+        try:
+            return response_format.model_validate_json(raw_text)
+        except Exception:
+            pass
+
+        try:
+            payload = json.loads(raw_text)
+        except json.JSONDecodeError:
+            return None
+
+        try:
+            return response_format.model_validate(payload)
+        except Exception:
+            return None
+
     async def chat(self, messages: list[dict], use_web_search: bool = False, **kwargs) -> str:
         """
         Send a chat completion request.
@@ -299,7 +359,9 @@ class LLMClient:
 
         current_messages = list(messages)
         max_tool_loops = DEFAULT_MAX_WEB_SEARCH_LOOPS
-        
+        empty_retries = 0
+        max_empty_retries = 2
+
         for i in range(max_tool_loops):
             kwargs_for_this_loop = dict(request_kwargs)
             # On the final loop, force the model to answer by removing tools
@@ -315,16 +377,41 @@ class LLMClient:
                 response_format=response_format,
                 **kwargs_for_this_loop,
             )
-            
+
             message = response.choices[0].message
-            # Append the assistant message exactly as it came back
-            current_messages.append(message.model_dump(exclude_none=True))
-            
+
+            # Check for model refusal
+            refusal = getattr(message, "refusal", None)
+            if refusal:
+                print(f"Warning: Model refused the request: {refusal}")
+
             if message.tool_calls:
+                # Keep the raw assistant message for tool call context
+                current_messages.append(message.model_dump(exclude_none=True, exclude={"parsed"}))
                 # Execute tools and append results
                 await self._execute_tool_calls(message.tool_calls, current_messages)
             else:
-                return message.parsed
+                structured_response = self._coerce_structured_response(response_format, message)
+                if structured_response is not None:
+                    return structured_response
+
+                # Empty response: retry instead of immediately crashing
+                # Do NOT append the empty assistant message — Gemini rejects empty parts
+                raw_text = self._extract_message_text(message).strip()
+                empty_retries += 1
+                if empty_retries <= max_empty_retries:
+                    preview = raw_text[:300] if raw_text else "<empty>"
+                    print(
+                        f"Warning: Empty/unparseable structured response (attempt {empty_retries}/{max_empty_retries}), "
+                        f"retrying... Preview: {preview}"
+                    )
+                    continue
+
+                preview = raw_text[:300] if raw_text else "<empty>"
+                raise ValueError(
+                    "Structured response parsing failed after retries: model returned no parseable content "
+                    f"for {response_format.__name__}. Preview: {preview}"
+                )
 
         return None
 

@@ -208,3 +208,9 @@ __marimo__/
 
 # Data folder
 data/
+
+# macOS
+.DS_Store
+
+# Log output (large, machine-generated)
+log/
