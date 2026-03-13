@@ -14,7 +14,7 @@ if str(project_root) not in sys.path:
 from typing import List, Optional, TYPE_CHECKING, Any
 
 from utils.file_utils import read_jsonl, save_string_to_md, read_md_to_string
-from schema import MarkdownResponse
+from schema import MarkdownResponse, AnalysisResponse
 from galaxy_assistant.factor_analysis import analyze_factor_log
 from shiyu_assistant.log_compression import (
     compress_log_messages,
@@ -642,7 +642,13 @@ def build_expert_prompt_payload(
         请将你的分析过程明确分为以下两个阶段：
         1. 流程梳理：分析主智能体的整体执行流程，任务分解是否合理，是否合理地调用了子智能体，以及是否正确地理解和使用了子智能体传回的结果。梳理它作出最终决策的逻辑是否合理，依据了哪些关键线索和证据。
         2. 错误检查：详细检查整个流程中是否出现任何错误、执行瑕疵或不合理的任务下发。
-        你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
+        
+        【定位要求】：在描述每一个具体错误时，请标注该错误对应的原始日志消息索引，格式为 `[msg@N]`（N 为压缩日志中的消息编号，如 assistant@12、tool@36 等）。这样读者可以快速在原始 JSONL 日志中定位到出错位置。
+        
+        你需要输出一个JSON结构，包含两个字段：
+        - `error_summary`: 用**一句话**概括该主智能体最严重的错误，格式为"🔴 致命：..." / "🟡 警告：..." / "🟢 无严重错误"。不要换行，不要使用列表，只用一句紧凑的话。
+        - `content`: 你详细的纯markdown格式的分析报告主体（必须包含上述的流程梳理和错误检查两部分）。
+        
         【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。不要靠猜测下结论，充分利用你的搜索权限！
         """
         if answer:
@@ -657,7 +663,7 @@ def build_expert_prompt_payload(
         """
         if answer:
             user_prompt += f"\n以下是最终的答案：\n{answer}"
-        user_prompt += "\n现在，请你给出你的分析报告，需要为纯md格式："
+        user_prompt += "\n现在，请你给出你的结构化分析结果："
     else:
         # galaxy框架提示词
         sys_prompt = """
@@ -670,12 +676,17 @@ def build_expert_prompt_payload(
         1. 流程梳理：分析各个子智能体给出了哪些关键数值、指标或结果，梳理专家智能体统筹这些信息并做出决策的逻辑是否合理，以及依据了什么关键证据、是否充分。
         2. 错误检查：详细检查专家智能体或子智能体在执行过程中是否发生了错误，评估可能存在的薄弱环节。
 
+        【定位要求】：在描述每一个具体错误时，请标注该错误对应的原始日志消息索引，格式为 `[msg@N]`（N 为压缩日志中的消息编号，如 assistant@12、tool@36 等）。这样读者可以快速在原始 JSONL 日志中定位到出错位置。
+
+        你需要输出一个JSON结构，包含两个字段：
+        - `error_summary`: 用**一句话**概括该专家智能体最严重的错误，格式为"🔴 致命：..." / "🟡 警告：..." / "🟢 无严重错误"。不要换行，不要使用列表，只用一句紧凑的话。
+        - `content`: 你详细的纯markdown格式的分析报告主体（必须包含上述的流程梳理和错误检查两部分）。
+
         【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。由于搜索次数有限，请务必按照重要性顺序，优先搜索最核心、最可能导致严重误判的疑点。不要靠猜测下结论，充分利用你的搜索权限！
         """
         if answer:
             sys_prompt += "\n在错误检查阶段，你还需要参考最终的答案，思考专家智能体的决策是否正确。如果不正确，请你分析可能导致预测失败的原因。"
         
-        sys_prompt += "\n你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。"
         user_prompt = f"""
         以下是你需要分析的专家智能体日志（结构化压缩版）：
         {compression_header}
@@ -685,7 +696,7 @@ def build_expert_prompt_payload(
         """
         if answer:
             user_prompt += f"\n以下是最终的答案：\n{answer}"
-        user_prompt += "\n现在，请你给出你的分析报告，需要为纯md格式："
+        user_prompt += "\n现在，请你给出你的结构化分析结果："
 
     messages = [
         {"role": "system", "content": sys_prompt},
@@ -723,7 +734,7 @@ def galaxy_task_analysis_prompt(path: str, factor_analysis: List[str], answer: s
     return payload["messages"]
 
 
-async def analyze_expert_log(client: 'LLMClient', factor_reports: List[str], expert_log_path: str, answer: str = None, use_alternative_prompt: bool = False) -> str:
+async def analyze_expert_log(client: 'LLMClient', factor_reports: List[str], expert_log_path: str, answer: str = None, use_alternative_prompt: bool = False) -> tuple[str, str]:
     """
     Analyze expert agent log using LLM with structured output.
     
@@ -735,13 +746,25 @@ async def analyze_expert_log(client: 'LLMClient', factor_reports: List[str], exp
         use_alternative_prompt: Whether to use alternative prompt templates.
         
     Returns:
-        str: The expert analysis report in Markdown format.
+        tuple[str, str]: A tuple containing the (markdown_content, error_summary).
     """
     payload = build_expert_prompt_payload(expert_log_path, factor_reports, answer, use_alternative_prompt)
     print(_format_expert_prompt_stats(payload, expert_log_path))
     messages = payload["messages"]
-    response = await client.chat_structured(messages, response_format=MarkdownResponse)
-    return response.content
+    
+    try:
+        response = await client.chat_structured(messages, response_format=AnalysisResponse)
+    except Exception as e:
+        expert_name = Path(expert_log_path).stem
+        print(f"Error analyzing expert log {expert_name}: {e}")
+        return f"# Expert Analysis Failed\n\nExpert: `{expert_name}`\n\nError: {e}\n", f"❌ Failed to analyze expert log: {e}"
+
+    if response is None:
+        expert_name = Path(expert_log_path).stem
+        print(f"Warning: No response for expert {expert_name} (max tool loops exhausted)")
+        return f"# Expert Analysis Incomplete\n\nExpert: `{expert_name}`\n\nThe model exhausted tool call loops without producing a final response.\n", "⚠️ API Exhausted tool calls."
+        
+    return response.content, response.error_summary
 
 
 async def run_full_analysis(client: 'LLMClient', folder_path: str, answer: str = None, concurrency_limit: int = 10, use_alternative_prompt: bool = False) -> None:
@@ -798,18 +821,22 @@ async def run_full_analysis(client: 'LLMClient', folder_path: str, answer: str =
 
         async def analyze_with_limit(file_path: Path) -> tuple[Path, str]:
             async with sem:
-                report = await analyze_factor_log(client, str(file_path), use_alternative_prompt)
-                return file_path, report
+                report_content, error_summary = await analyze_factor_log(client, str(file_path), use_alternative_prompt)
+                
+                # Prepend the error summary to the content before saving
+                final_content = f"> [!Error Summary]\n> {error_summary}\n\n{report_content}"
+                
+                return file_path, final_content
 
         factor_tasks = [analyze_with_limit(f) for f in missing_factor_files]
         generated_results = await asyncio.gather(*factor_tasks)
 
         # Step 3: Save generated factor reports
-        for factor_file, report in generated_results:
+        for factor_file, report_content in generated_results:
             report_name = f"factor_{factor_file.stem}_analysis.md"
             report_path = analysis_folder / report_name
-            save_string_to_md(report, str(report_path))
-            factor_reports_map[factor_file] = report
+            save_string_to_md(report_content, str(report_path))
+            factor_reports_map[factor_file] = report_content
             print(f"Saved factor report: {report_path}")
     else:
         print("All factor reports already exist, skip factor regeneration.")
@@ -828,11 +855,71 @@ async def run_full_analysis(client: 'LLMClient', folder_path: str, answer: str =
     expert_log_path = str(expert_log_candidates[0])
     print(f"Analyzing expert log: {expert_log_path}")
     
+    # Extract error summaries to build the global error dashboard
+    def _extract_error_summary(report_content: str) -> str:
+        """Extract the full error summary from a report, handling multi-line blockquotes."""
+        lines = report_content.split('\n')
+        if not lines or not lines[0].startswith("> [!Error Summary]"):
+            return "⚠️ 未找到错误速览字段"
+        summary_parts = []
+        for line in lines[1:]:
+            if line.startswith("> "):
+                summary_parts.append(line[2:].strip())
+            elif line.strip() == ">":
+                continue
+            else:
+                break
+        return " ".join(summary_parts).strip() if summary_parts else "⚠️ 未找到错误速览字段"
+
+    def _severity_icon(summary: str) -> str:
+        """Determine severity icon based on error summary content."""
+        lowered = summary.lower()
+        if any(k in lowered for k in ("致命", "🔴", "❌", "failed", "根本性")):
+            return "🔴"
+        if any(k in lowered for k in ("严重", "警告", "🟡", "⚠️")):
+            return "🟡"
+        if any(k in lowered for k in ("✅", "无严重错误", "🟢")):
+            return "🟢"
+        return "🟡"  # default to warning if uncertain
+
+    factor_error_entries = []
+    for factor_file, report_content in factor_reports_map.items():
+        factor_name = factor_file.stem
+        error_summary = _extract_error_summary(report_content)
+        icon = _severity_icon(error_summary)
+        factor_error_entries.append((factor_name, error_summary, icon))
+
     # Step 5: Analyze expert log using the factor reports
-    expert_report = await analyze_expert_log(client, list(factor_reports), expert_log_path, answer, use_alternative_prompt)
+    expert_content, expert_error_summary = await analyze_expert_log(client, list(factor_reports), expert_log_path, answer, use_alternative_prompt)
+    expert_icon = _severity_icon(expert_error_summary)
+
+    # Build formatted dashboard
+    red_count = sum(1 for _, _, ic in factor_error_entries if ic == "🔴") + (1 if expert_icon == "🔴" else 0)
+    yellow_count = sum(1 for _, _, ic in factor_error_entries if ic == "🟡") + (1 if expert_icon == "🟡" else 0)
+    green_count = sum(1 for _, _, ic in factor_error_entries if ic == "🟢") + (1 if expert_icon == "🟢" else 0)
+    total = len(factor_error_entries) + 1
+
+    global_error_dashboard = [
+        "# 🚨 集中错误速览 (Error Dashboard)\n",
+        f"> **统计**: 共 {total} 个模块 — "
+        f"🔴 致命 {red_count} | 🟡 警告 {yellow_count} | 🟢 正常 {green_count}\n",
+        "\n---\n",
+        "\n## 📋 Factor 级错误\n",
+    ]
+    for factor_name, error_summary, icon in factor_error_entries:
+        global_error_dashboard.append(f"\n### {icon} `{factor_name}`\n- {error_summary}\n")
+
+    global_error_dashboard.append("\n---\n")
+    global_error_dashboard.append(f"\n## 🧠 Expert 决策汇总\n")
+    global_error_dashboard.append(f"\n### {expert_icon} Expert\n- {expert_error_summary}\n")
+
+    # Save the global error dashboard
+    dashboard_path = analysis_folder / "error_dashboard.md"
+    save_string_to_md("".join(global_error_dashboard), str(dashboard_path))
+    print(f"Saved centralized error dashboard: {dashboard_path}")
     
     # Step 6: Save expert analysis report (completion marker)
-    save_string_to_md(expert_report, str(expert_report_path))
+    save_string_to_md(expert_content, str(expert_report_path))
     print(f"Saved expert report: {expert_report_path}")
     
     print(f"\nAll analysis reports saved to: {analysis_folder}")

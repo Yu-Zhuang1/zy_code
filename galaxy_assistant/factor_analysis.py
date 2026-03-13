@@ -11,7 +11,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from utils.file_utils import read_jsonl
-from schema import MarkdownResponse
+from schema import MarkdownResponse, AnalysisResponse
 from shiyu_assistant.log_compression import (
     compress_log_messages,
     format_compressed_payload,
@@ -414,38 +414,72 @@ def _build_prompt_text(log_content: str, use_alternative_prompt: bool) -> tuple[
     if use_alternative_prompt:
         # shiyu_dev框架提示词
         sys_prompt = """
-        你是一个日志分析专家。你现在正在对一个执行预测任务的多智能体系统的部分日志执行分析工作。
-        这个多智能体系统由一个主智能体负责统筹调度和任务分解，调用子智能体对子任务进行分析。
-        你的任务是分析其中的一个子智能体的日志。
-        请将你的分析过程明确分为以下两个阶段：
-        1. 流程梳理：分析子智能体的整个工作流程，它找到了哪些关键指标和数值，以及它做出决策的依据是什么。检查流程是否合理。
-        2. 错误检查：详细检查子智能体的工具调用质量和效果，明确指出是否发生了任何错误、遗漏或不合理的行为。
-        你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
-        【重要】：你现在具备了联网搜索能力（search_web工具）。在分析过程中，如果你遇到了不确定的专业术语、报错代码、API变更、或者是需要核对关键事实，请大胆先调用搜索工具来获取背景信息，然后再做出准确判断。
+        你是一个日志分析专家。你正在分析一个多智能体预测系统中**某个子智能体**的执行日志。
+        该系统由主智能体统筹调度和任务分解，调用子智能体对子任务进行分析。
+
+        请按以下结构输出分析：
+
+        ## 1. 流程梳理
+        - 子智能体执行了哪些步骤，找到了哪些关键数据/指标
+        - 决策依据是什么，逻辑链是否合理
+        - **结论评估**：最终结论是否有充分证据支撑？置信度与实际证据强度是否匹配？是否遗漏了本应探索的重要方向？
+
+        ## 2. 错误检查
+        按严重程度**从高到低**列出每个错误，每条须包含：
+        - 严重程度标签（🔴 致命 / 🟡 警告 / 🟢 观察）
+        - 错误描述
+        - 日志定位 `[msg@N]`（N 为消息编号，如 assistant@12、tool@36）
+
+        **严重程度判定标准**：
+        - 🔴 致命 = 导致任务目标根本无法达成，或产出误导性结论（如：逻辑前提错误、核心数据完全无效、违规导致关键步骤失败）
+        - 🟡 警告 = 不影响核心结论但造成效率损失或质量下降（如：低效重复调用、非关键工具报错、信息源单一）
+        - 🟢 观察 = 值得记录的小问题或改进点，不影响当前任务结果
+
+        你需要输出一个JSON结构，包含两个字段：
+        - `error_summary`: **一句话**概括最严重的错误，以"🔴 致命：..." / "🟡 警告：..." / "🟢 无严重错误"开头。不换行、不用列表。
+        - `content`: 纯markdown分析报告（须包含上述"流程梳理"和"错误检查"两部分）。
+
+        【极其重要 - 搜索】：你具备联网搜索能力（search_web工具）。当日志中出现你不确定的事实（时间/休市日、API字段、报错码、业务公式、事件细节等），你**必须**主动调用 search_web 进行交叉验证，不要靠猜测下结论！按重要性排序，优先搜索最可能导致严重误判的疑点。
         """
         user_prompt = f"""
         子智能体日志：
         {log_content}
-        请给出分析报告（纯md格式）：
+        请给出结构化分析结果：
         """
     else:
         # galaxy框架提示词
         sys_prompt = """
-        你是一个日志分析专家。你现在正在对一个执行预测任务的多智能体系统的部分日志执行分析工作。
-        这个多智能体系统由一个专家智能体调用多个子智能体进行分析，最后子智能体的结果交由专家智能体进行聚合。
-        你的任务是分析其中的一个子智能体的日志。
+        你是一个日志分析专家。你正在分析一个多智能体预测系统中**某个子智能体**的执行日志。
+        该系统由专家智能体调用多个子智能体分别执行子任务，最后由专家智能体聚合结果。
 
-        请将你的分析过程明确分为以下两个阶段：
-        1. 流程梳理：分析子智能体的整个工作流程，它找到了哪些关键指标和数值，以及它做出决策的依据是什么。检查流程是否合理。
-        2. 错误检查：详细检查子智能体的工具调用质量和效果，明确指出是否发生了任何错误、遗漏或不合理的行为。
-        你应该将你的分析结果输出为纯markdown格式的字符串，不要包含多余的字符，可以直接存储进.md文件。
+        请按以下结构输出分析：
 
-        【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。由于搜索次数有限，请务必按照重要性顺序，优先搜索最核心、最可能导致严重误判的疑点。不要靠猜测下结论，充分利用你的搜索权限！
+        ## 1. 流程梳理
+        - 子智能体执行了哪些步骤，找到了哪些关键数据/指标
+        - 决策依据是什么，逻辑链是否合理
+        - **结论评估**：最终结论是否有充分证据支撑？置信度与实际证据强度是否匹配？是否遗漏了本应探索的重要方向？
+
+        ## 2. 错误检查
+        按严重程度**从高到低**列出每个错误，每条须包含：
+        - 严重程度标签（🔴 致命 / 🟡 警告 / 🟢 观察）
+        - 错误描述
+        - 日志定位 `[msg@N]`（N 为消息编号，如 assistant@12、tool@36）
+
+        **严重程度判定标准**：
+        - 🔴 致命 = 导致任务目标根本无法达成，或产出误导性结论（如：逻辑前提错误、核心数据完全无效、违规导致关键步骤失败）
+        - 🟡 警告 = 不影响核心结论但造成效率损失或质量下降（如：低效重复调用、非关键工具报错、信息源单一）
+        - 🟢 观察 = 值得记录的小问题或改进点，不影响当前任务结果
+
+        你需要输出一个JSON结构，包含两个字段：
+        - `error_summary`: **一句话**概括最严重的错误，以"🔴 致命：..." / "🟡 警告：..." / "🟢 无严重错误"开头。不换行、不用列表。
+        - `content`: 纯markdown分析报告（须包含上述"流程梳理"和"错误检查"两部分）。
+
+        【极其重要 - 搜索】：你具备联网搜索能力（search_web工具）。当日志中出现你不确定的事实（时间/休市日、API字段、报错码、业务公式、事件细节等），你**必须**主动调用 search_web 进行交叉验证，不要靠猜测下结论！按重要性排序，优先搜索最可能导致严重误判的疑点。
         """
         user_prompt = f"""
         以下是你需要分析的子智能体的日志：
         {log_content}
-        现在，请你给出你的分析报告，需要为纯md格式：
+        现在，请你给出你的结构化分析结果：
         """
     return sys_prompt, user_prompt
 
@@ -610,7 +644,7 @@ def factor_analysis_prompt(path: str, use_alternative_prompt: bool = False) -> l
     payload = build_factor_prompt_payload(path, use_alternative_prompt)
     return payload["messages"]
 
-async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_prompt: bool = False) -> str:
+async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_prompt: bool = False) -> tuple[str, str]:
     """
     Asynchronously analyze a factor log using the LLM client.
     
@@ -620,7 +654,7 @@ async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_pro
         use_alternative_prompt: Whether to use alternative prompt templates.
         
     Returns:
-        str: The analysis result in Markdown format.
+        tuple[str, str]: A tuple containing (markdown_content, error_summary).
     """
     loop = asyncio.get_running_loop()
     payload = await loop.run_in_executor(
@@ -630,22 +664,22 @@ async def analyze_factor_log(client: 'LLMClient', path: str, use_alternative_pro
     print(_format_factor_prompt_stats(payload, path))
     messages = payload["messages"]
     
-    # Using chat_structured to enforce MarkdownResponse schema with web search enabled
+    # Using chat_structured to enforce AnalysisResponse schema with web search enabled
     try:
         response = await client.chat_structured(
             messages,
-            response_format=MarkdownResponse,
+            response_format=AnalysisResponse,
             use_web_search=True
         )
     except (ValueError, Exception) as e:
         factor_name = Path(path).stem
         print(f"Error analyzing factor {factor_name}: {e}")
-        return f"# Factor Analysis Failed\n\nFactor: `{factor_name}`\n\nError: {e}\n"
+        return f"# Factor Analysis Failed\n\nFactor: `{factor_name}`\n\nError: {e}\n", f"❌ Failed to analyze factor log: {e}"
 
     if response is None:
         factor_name = Path(path).stem
         print(f"Warning: No response for factor {factor_name} (max tool loops exhausted)")
-        return f"# Factor Analysis Incomplete\n\nFactor: `{factor_name}`\n\nThe model exhausted tool call loops without producing a final response.\n"
+        return f"# Factor Analysis Incomplete\n\nFactor: `{factor_name}`\n\nThe model exhausted tool call loops without producing a final response.\n", "⚠️ API Exhausted tool calls."
 
-    return response.content
+    return response.content, response.error_summary
 

@@ -75,7 +75,6 @@ class LLMClient:
         self.default_reasoning_effort = cleaned_effort or DEFAULT_REASONING_EFFORT
         self.timeout_seconds = max(1.0, _get_env_float("LLM_TIMEOUT_SECONDS", 10800.0))
         self.client_max_retries = max(0, _get_env_int("LLM_CLIENT_MAX_RETRIES", 2))
-        self.web_search_tool_types = self._load_web_search_tool_types()
 
         if not self.base_url:
             raise ValueError("OPENROUTER_BASE_URL not found in .env file")
@@ -88,44 +87,6 @@ class LLMClient:
             timeout=httpx.Timeout(self.timeout_seconds),
             max_retries=self.client_max_retries,
         )
-
-    @staticmethod
-    def _load_web_search_tool_types() -> list[str]:
-        """
-        Load preferred web search tool types from env.
-        Defaults to a compatibility order that works across common gateways.
-        """
-        raw_value = os.getenv("WEB_SEARCH_TOOL_TYPE", "web_search,web_search_preview")
-        candidates = [item.strip() for item in raw_value.split(",") if item.strip()]
-        if not candidates:
-            candidates = ["web_search", "web_search_preview"]
-
-        ordered: list[str] = []
-        seen = set()
-        for item in candidates:
-            if item in seen:
-                continue
-            seen.add(item)
-            ordered.append(item)
-        return ordered
-
-    @staticmethod
-    def _merge_tools(
-        tools: Optional[list[dict[str, Any]]] = None,
-        web_search_tool_type: Optional[str] = None,
-    ) -> Optional[list[dict[str, Any]]]:
-        merged_tools: list[dict[str, Any]] = []
-        if tools:
-            merged_tools.extend(tools)
-
-        if web_search_tool_type:
-            has_same_type = any(
-                isinstance(tool, dict) and tool.get("type") == web_search_tool_type
-                for tool in merged_tools
-            )
-            if not has_same_type:
-                merged_tools.append({"type": web_search_tool_type})
-        return merged_tools or None
 
     def _with_default_reasoning(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         request_kwargs = dict(kwargs)
@@ -146,6 +107,9 @@ class LLMClient:
 
     async def _execute_tool_calls(self, tool_calls, messages: list[dict]):
         """Execute python functions requested by LLM and append results to messages."""
+        if not tool_calls:
+            return False
+            
         tool_results_added = False
         for tool_call in tool_calls:
             function_name = getattr(tool_call.function, "name", "")
@@ -385,11 +349,14 @@ class LLMClient:
             if refusal:
                 print(f"Warning: Model refused the request: {refusal}")
 
-            if message.tool_calls:
+            # Ensure tool_calls is not None before checking or iterating
+            tool_calls = getattr(message, "tool_calls", None)
+
+            if tool_calls:
                 # Keep the raw assistant message for tool call context
                 current_messages.append(message.model_dump(exclude_none=True, exclude={"parsed"}))
                 # Execute tools and append results
-                await self._execute_tool_calls(message.tool_calls, current_messages)
+                await self._execute_tool_calls(tool_calls, current_messages)
             else:
                 structured_response = self._coerce_structured_response(response_format, message)
                 if structured_response is not None:
@@ -428,41 +395,25 @@ class LLMClient:
         tool_choice = kwargs.pop("tool_choice", None)
         request_kwargs = self._with_default_reasoning(kwargs)
 
-        response = None
-        last_error = None
         if use_web_search:
-            for tool_type in self.web_search_tool_types:
-                try:
-                    request_kwargs_with_search = dict(request_kwargs)
-                    merged_tools = self._merge_tools(tools, web_search_tool_type=tool_type)
-                    if merged_tools:
-                        request_kwargs_with_search["tools"] = merged_tools
-                        request_kwargs_with_search["tool_choice"] = tool_choice or "auto"
-                    response = await self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        stream=True,
-                        **request_kwargs_with_search,
-                    )
-                    break
-                except Exception as exc:
-                    last_error = exc
-                    print(f"Warning: stream with web search '{tool_type}' failed ({exc}). Trying fallback.")
+            merged_tools = []
+            if tools:
+                merged_tools.extend(tools)
+            merged_tools.append(self._build_serper_tool_schema())
+            request_kwargs["tools"] = merged_tools
+            if not tool_choice:
+                request_kwargs["tool_choice"] = "auto"
+        elif tools:
+            request_kwargs["tools"] = tools
+            if tool_choice:
+                request_kwargs["tool_choice"] = tool_choice
 
-        if response is None:
-            if use_web_search and last_error:
-                print("Warning: stream fallback to request without web search.")
-            request_kwargs_no_search = dict(request_kwargs)
-            merged_tools = self._merge_tools(tools)
-            if merged_tools:
-                request_kwargs_no_search["tools"] = merged_tools
-                request_kwargs_no_search["tool_choice"] = tool_choice or "auto"
-            response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                stream=True,
-                **request_kwargs_no_search,
-            )
+        response = await self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            stream=True,
+            **request_kwargs,
+        )
 
         async for chunk in response:
             if chunk.choices[0].delta.content:

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="log/mytest/0311_2"
+TARGET_DIR="test/685e489b6e8dbd006cdc6f70"
 MODEL="${MODEL:-google/gemini-2.5-pro}"
 FACTOR_CONCURRENCY="${FACTOR_CONCURRENCY:-5}"
 TASK_CONCURRENCY="${TASK_CONCURRENCY:-3}"

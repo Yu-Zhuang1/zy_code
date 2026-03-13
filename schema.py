@@ -13,3 +13,7 @@ class ResponseFormat(BaseModel):
 
 class MarkdownResponse(BaseModel):
     content: str = Field(..., description="Markdown 格式的分析内容，必须为纯净的Markdown格式字符串，不要包含多余的字符，可以直接存储进.md文件")    
+
+class AnalysisResponse(BaseModel):
+    error_summary: str = Field(..., description="一句话错误速览，格式为'🔴 致命：...' / '🟡 警告：...' / '🟢 无严重错误'。必须为单行，不换行，不使用列表。")
+    content: str = Field(..., description="The detailed Markdown analysis report.")

@@ -49,6 +49,8 @@ async def search_web(query: str, num_results: int = 5) -> str:
             if not organic_results:
                 return "No organic results found for the query."
             
+            print(f"[Search Success] Captured {min(len(organic_results), num_results)} results for: {query}")
+
             # Format the output for the LLM
             formatted_results = []
             for i, result in enumerate(organic_results[:num_results], 1):
