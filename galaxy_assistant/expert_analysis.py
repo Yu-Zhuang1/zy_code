@@ -652,7 +652,11 @@ def build_expert_prompt_payload(
         【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。不要靠猜测下结论，充分利用你的搜索权限！
         """
         if answer:
-            sys_prompt += "\n在错误检查阶段，你还需要参考最终的答案，思考主智能体的最终预测是否正确。如果不正确，请你分析可能导致预测失败的原因。"
+            sys_prompt += """
+        3. 预测结果对比：将主智能体的最终预测与正确答案进行对比。判断预测是否正确，如果不正确，请分析导致预测失败的根本原因链（从数据获取失败到决策偏差的完整因果链）。
+        
+        当提供了正确答案时，`error_summary` 须以预测结果开头："❌ 预测错误：..." 或 "✅ 预测正确，..."，然后再描述最严重的错误。
+        """
         
         user_prompt = f"""
         以下是你需要分析的主智能体日志（结构化压缩版）：
@@ -685,7 +689,11 @@ def build_expert_prompt_payload(
         【极其重要】：你具备联网搜索能力（search_web工具），并且我设定了允许你连续多次调用它！当日志中出现多个你不确定的：时间/休市日要求、API接口字段、特定报错码、业务公式或事件细节时，你**必须**针对每一个疑点分别发起多次 search_web 调用，直到所有关键事实都被互联网数据交叉验证过为止。由于搜索次数有限，请务必按照重要性顺序，优先搜索最核心、最可能导致严重误判的疑点。不要靠猜测下结论，充分利用你的搜索权限！
         """
         if answer:
-            sys_prompt += "\n在错误检查阶段，你还需要参考最终的答案，思考专家智能体的决策是否正确。如果不正确，请你分析可能导致预测失败的原因。"
+            sys_prompt += """
+        3. 预测结果对比：将专家智能体的最终预测与正确答案进行对比。判断预测是否正确，如果不正确，请分析导致预测失败的根本原因链（从数据获取失败到决策偏差的完整因果链）。
+        
+        当提供了正确答案时，`error_summary` 须以预测结果开头："❌ 预测错误：..." 或 "✅ 预测正确，..."，然后再描述最严重的错误。
+        """
         
         user_prompt = f"""
         以下是你需要分析的专家智能体日志（结构化压缩版）：
@@ -874,11 +882,11 @@ async def run_full_analysis(client: 'LLMClient', folder_path: str, answer: str =
     def _severity_icon(summary: str) -> str:
         """Determine severity icon based on error summary content."""
         lowered = summary.lower()
-        if any(k in lowered for k in ("致命", "🔴", "❌", "failed", "根本性")):
+        if any(k in lowered for k in ("致命", "🔴", "❌", "failed", "根本性", "预测错误")):
             return "🔴"
         if any(k in lowered for k in ("严重", "警告", "🟡", "⚠️")):
             return "🟡"
-        if any(k in lowered for k in ("✅", "无严重错误", "🟢")):
+        if any(k in lowered for k in ("✅", "无严重错误", "🟢", "预测正确")):
             return "🟢"
         return "🟡"  # default to warning if uncertain
 
@@ -912,6 +920,14 @@ async def run_full_analysis(client: 'LLMClient', folder_path: str, answer: str =
     global_error_dashboard.append("\n---\n")
     global_error_dashboard.append(f"\n## 🧠 Expert 决策汇总\n")
     global_error_dashboard.append(f"\n### {expert_icon} Expert\n- {expert_error_summary}\n")
+
+    # Add prediction result section when answer is provided
+    if answer:
+        prediction_icon = "❌" if "❌" in expert_error_summary or "预测错误" in expert_error_summary else "✅" if "✅" in expert_error_summary or "预测正确" in expert_error_summary else "❓"
+        global_error_dashboard.append("\n---\n")
+        global_error_dashboard.append(f"\n## 📊 预测结果\n")
+        global_error_dashboard.append(f"\n- **正确答案**: `{answer[:200]}`\n")
+        global_error_dashboard.append(f"- **预测判定**: {prediction_icon} {'详见 Expert 分析报告中的「预测结果对比」章节'}\n")
 
     # Save the global error dashboard
     dashboard_path = analysis_folder / "error_dashboard.md"
